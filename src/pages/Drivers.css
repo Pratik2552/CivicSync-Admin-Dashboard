@@ -1,0 +1,94 @@
+.drv-page {
+  max-width: 100%;
+}
+
+.drv-kpis {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+}
+
+.drv-kpi {
+  padding: 3px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.drv-kpi.active  { background: var(--color-green-light);   color: var(--color-green); }
+.drv-kpi.transit { background: var(--color-primary-xlight); color: var(--color-primary-light); }
+.drv-kpi.maint   { background: var(--color-warning-light);  color: var(--color-warning); }
+
+/* ── Load Bar ── */
+.load-bar-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 130px;
+}
+
+.load-text {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+.load-bar-bg {
+  height: 5px;
+  background: var(--color-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.load-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* ── License Plate ── */
+.plate-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+  color: var(--color-text);
+}
+
+/* ── Sort columns ── */
+th.sortable {
+  cursor: pointer;
+  display: table-cell;
+  user-select: none;
+}
+th.sortable:hover { color: var(--color-text); }
+
+.sort-placeholder { display: inline-block; width: 12px; }
+
+/* ── Bottom grid (Territory + Performance) ── */
+.drv-bottom-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+}
+
+/* ── Driver Actions ── */
+.drv-actions {
+  display: flex;
+  gap: 4px;
+}
+
+/* ── Territory form 2-col ── */
+.form-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 var(--space-3);
+}
+
+/* ── Section spacing ── */
+.mb-6 { margin-bottom: var(--space-6); }

@@ -1,0 +1,222 @@
+.ro-page {
+  max-width: 100%;
+}
+
+.ro-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.ro-success-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  background: var(--color-green-light);
+  color: var(--color-green);
+  border: 1px solid #a7f3d0;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.ro-driver-select {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+.ro-driver-select label {
+  white-space: nowrap;
+}
+.ro-driver-select .form-select {
+  width: 220px;
+}
+
+.ro-zone-toggles {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.ro-zone-check {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.ro-zone-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Layout ── */
+.ro-body {
+  display: flex;
+  gap: var(--space-5);
+  align-items: flex-start;
+}
+
+.ro-map-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.ro-details-col {
+  width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.ro-map-wrapper {
+  position: relative;
+}
+
+/* ── Legend ── */
+.ro-legend {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+}
+
+.ro-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.ro-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── Details Panel ── */
+.ro-details-panel .panel-body {
+  padding: var(--space-3);
+}
+
+.ro-driver-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.ro-detail-kv {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 12px;
+}
+.ro-detail-kv:last-of-type { border-bottom: none; }
+.ro-detail-kv span { color: var(--color-text-secondary); }
+.ro-detail-kv strong { font-weight: 600; color: var(--color-text); }
+
+.ro-wp-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: var(--space-3) 0 var(--space-2);
+}
+
+.ro-wp-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ro-wp-item {
+  font-size: 12px;
+  padding: 4px 8px;
+  background: var(--color-surface-alt);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+}
+
+.ro-wp-item.depot {
+  background: var(--color-primary-xlight);
+}
+
+.ro-wp-depot {
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+/* ── Override Panel ── */
+.ro-override-panel .panel-body {
+  padding: var(--space-4);
+}
+
+.ro-override-note {
+  font-size: 11px;
+  color: var(--color-warning);
+  margin-bottom: var(--space-3);
+  background: var(--color-warning-light);
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--color-warning-mid);
+}
+
+.ro-override-success {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-green);
+  background: var(--color-green-light);
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-3);
+  line-height: 1.5;
+}
+
+.ro-override-section {
+  margin-bottom: var(--space-4);
+}
+
+.ro-override-section h4 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--space-2);
+}
+
+.ro-override-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Spin animation for optimize button */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.spin { animation: spin 1s linear infinite; }
