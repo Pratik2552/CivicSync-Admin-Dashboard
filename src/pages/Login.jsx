@@ -22,16 +22,21 @@ const Login = () => {
     try {
       setIsLoading(true);
       setError('');
+
       const response = await login(email, password);
+
       if (response && response.token) {
+        // Save Admin Token and Admin Profile details to localStorage
         localStorage.setItem('civicsync_admin_token', response.token);
-        localStorage.setItem('civicsync_admin_user', JSON.stringify(response.user || { name: 'Admin User' }));
+        localStorage.setItem('civicsync_admin_user', JSON.stringify(response.user || { role: 'Admin' }));
+
+        // Redirect to Admin Dashboard
         navigate('/admin/dashboard');
       } else {
-        setError('Invalid credentials. Please try again.');
+        setError('Invalid admin credentials. Please try again.');
       }
     } catch (err) {
-      setError(err.message || 'An error occurred during sign in.');
+      setError(err.message || 'An error occurred during administrator sign in.');
     } finally {
       setIsLoading(false);
     }
@@ -74,11 +79,12 @@ const Login = () => {
               <label className="form-label" htmlFor="email">Official Email / Username</label>
               <input
                 id="email"
-                type="text"
+                type="email"
                 className="form-input"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="admin@pmc.gov.in"
+                required
                 disabled={isLoading}
               />
             </div>
@@ -93,6 +99,7 @@ const Login = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
+                  required
                   disabled={isLoading}
                 />
                 <button 

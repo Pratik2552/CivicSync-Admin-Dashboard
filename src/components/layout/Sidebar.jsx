@@ -7,7 +7,6 @@ import {
   MessageSquareWarning,
   LogOut,
   Building2,
-  ChevronRight,
 } from 'lucide-react'
 import { logout, getAuthUser } from '../../services/api.js'
 import './Sidebar.css'
@@ -28,6 +27,11 @@ export default function Sidebar() {
     logout()
     navigate('/login')
   }
+
+  // Fallback string evaluation for full_name or name
+  const displayName = user?.full_name || user?.name || user?.email || 'Admin'
+  const avatarChar = displayName.charAt(0).toUpperCase()
+  const displayRole = user?.role || 'Administrator'
 
   return (
     <aside className="sidebar">
@@ -62,11 +66,11 @@ export default function Sidebar() {
         {user && (
           <div className="sidebar-user">
             <div className="sidebar-user-avatar">
-              {user.name?.charAt(0).toUpperCase() || 'A'}
+              {avatarChar}
             </div>
             <div className="sidebar-user-info">
-              <span className="sidebar-user-name">{user.name}</span>
-              <span className="sidebar-user-role">{user.role}</span>
+              <span className="sidebar-user-name">{displayName}</span>
+              <span className="sidebar-user-role">{displayRole}</span>
             </div>
           </div>
         )}
