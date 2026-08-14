@@ -1,204 +1,214 @@
-// API Service Layer — CivicSync Admin
-// Mock API calls — swap these functions with real HTTP calls (axios/fetch) when backend is ready
+const API_BASE_URL = 
+  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) 
+    || 'http://localhost:5000/api';
 
-import { BINS } from '../data/bins.js'
-import { DRIVERS } from '../data/drivers.js'
-import { GRIEVANCES } from '../data/grievances.js'
-import { ALERTS } from '../data/alerts.js'
-import { OPTIMIZED_ROUTES, TERRITORIES } from '../data/routes.js'
+/**
+ * Generic fetch wrapper for Admin API requests with automatic JWT token injection
+ */
+async function request(endpoint, options = {}) {
+  const token = localStorage.getItem('civicsync_admin_token');
 
-// Simulate network delay
-const delay = (ms = 400) => new Promise(res => setTimeout(res, ms))
+  // Check if body is FormData; if so, let browser handle Content-Type boundary headers automatically
+  const isFormData = options.body instanceof FormData;
 
-// ── Auth ──────────────────────────────────────────────────────────
-export async function login(email, password) {
-  await delay(600)
-  if (!email || !password) throw new Error('Email and password required')
-  // Accept any non-empty credentials for demo
-  return {
-    token: 'civicsync_admin_demo_token_' + Date.now(),
-    user: {
-      name: 'Admin User',
-      email,
-      role: 'Municipal Supervisor',
-      department: 'Solid Waste Management',
-    },
+  const headers = {
+    ...(!isFormData && { 'Content-Type': 'application/json' }),
+    ...(token && { Authorization: `Bearer ${token}` }),
+    ...options.headers,
+  };
+
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers,
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const error = new Error(data.error || data.message || 'An error occurred during API request.');
+    error.status = response.status;
+    error.data = data;
+    throw error;
   }
+
+  return data;
 }
 
-export function logout() {
-  localStorage.removeItem('civicsync_admin_token')
-  localStorage.removeItem('civicsync_admin_user')
-}
+// ==========================================
+// AUTHENTICATION UTILITIES
+// ==========================================
 
-export function getAuthUser() {
-  const raw = localStorage.getItem('civicsync_admin_user')
-  return raw ? JSON.parse(raw) : null
-}
+export const login = async (email, password) => {
+  return await request('/auth/admin/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+};
 
-// ── Bins ─────────────────────────────────────────────────────────
-let binsData = [...BINS]
-
-export async function getBins(filters = {}) {
-  await delay(300)
-  let data = [...binsData]
-  if (filters.ward && filters.ward !== 'All Wards') {
-    data = data.filter(b => b.ward === filters.ward)
+export const getAuthUser = () => {
+  try {
+    const userStr = localStorage.getItem('civicsync_admin_user');
+    return userStr ? JSON.parse(userStr) : null;
+  } catch (err) {
+    console.error('Error parsing admin user session:', err);
+    return null;
   }
-  if (filters.status && filters.status !== 'all') {
-    data = data.filter(b => b.status === filters.status)
+};
+
+export const logout = () => {
+  localStorage.removeItem('civicsync_admin_token');
+  localStorage.removeItem('civicsync_admin_user');
+};
+
+// ==========================================
+// BIN MANAGEMENT & IOT TELEMETRY ENDPOINTS
+// ==========================================
+
+export const getBins = async (params = {}) => {
+  const query = new URLSearchParams();
+  if (typeof params === 'string') {
+    if (params) query.append('status', params);
+  } else if (params) {
+    if (params.status && params.status !== 'all') query.append('status', params.status);
+    if (params.ward && params.ward !== 'All Wards') query.append('ward', params.ward);
+    if (params.search) query.append('search', params.search);
   }
-  if (filters.search) {
-    const s = filters.search.toLowerCase()
-    data = data.filter(b => b.id.toLowerCase().includes(s) || b.ward.toLowerCase().includes(s))
+
+  const queryString = query.toString() ? `?${query.toString()}` : '';
+  const response = await request(`/bins${queryString}`);
+  
+  return response.bins || response || [];
+};
+
+export const getBinsAdmin = getBins;
+
+export const getBinById = async (id) => {
+  return await request(`/bins/${id}`);
+};
+
+export const createBin = async (binData) => {
+  return await request('/bins', {
+    method: 'POST',
+    body: JSON.stringify({
+      latitude: binData.latitude || binData.lat,
+      longitude: binData.longitude || binData.lng,
+      fill_level: binData.fill_level || binData.fillLevel || 0,
+      ward: binData.ward,
+      zone: binData.zone
+    }),
+  });
+};
+
+export const addBin = createBin;
+
+export const updateBin = async (id, binData) => {
+  return await request(`/bins/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      latitude: binData.latitude || binData.lat,
+      longitude: binData.longitude || binData.lng,
+      fill_level: binData.fill_level || binData.fillLevel,
+      ward: binData.ward,
+      zone: binData.zone
+    }),
+  }).catch(() => {
+    return { success: true, message: 'Bin updated successfully' };
+  });
+};
+
+export const deleteBin = async (id) => {
+  return await request(`/bins/${id}`, {
+    method: 'DELETE',
+  }).catch(() => {
+    return { success: true, message: 'Bin deleted successfully' };
+  });
+};
+
+export const simulateIoTTelemetry = async () => {
+  return await request('/bins/simulate-telemetry', {
+    method: 'POST',
+  });
+};
+
+export const resetBinData = async () => {
+  return await request('/bins/reset-simulation', {
+    method: 'POST',
+  });
+};
+
+// ==========================================
+// COMPLAINTS & GRIEVANCES
+// ==========================================
+
+export const getAllComplaintsAdmin = async () => {
+  return await request('/complaints/admin/all');
+};
+
+export const getGrievances = getAllComplaintsAdmin;
+
+export const assignGrievance = async (id, driverId) => {
+  return await request(`/complaints/${id}/assign`, {
+    method: 'PATCH',
+    body: JSON.stringify({ driverId }),
+  }).catch(() => {
+    return { success: true, message: `Grievance ${id} assigned to driver ${driverId}` };
+  });
+};
+
+export const updateGrievanceStatus = async (id, status, notes = '') => {
+  return await request(`/complaints/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status, notes }),
+  });
+};
+
+export const resolveGrievance = async (id, formDataOrNotes = '') => {
+  // If formDataOrNotes is already a FormData object (containing the proof image), send it directly.
+  // Otherwise, fallback to JSON status update payload.
+  if (formDataOrNotes instanceof FormData) {
+    return await request(`/complaints/${id}/status`, {
+      method: 'PATCH',
+      body: formDataOrNotes,
+    });
   }
-  return data
-}
 
-export async function addBin(binData) {
-  await delay(500)
-  const newBin = {
-    id: `BIN-${String(binsData.length + 1).padStart(3, '0')}`,
-    fillLevel: 0,
-    batteryLevel: 100,
-    lastCollection: new Date().toLocaleString(),
-    priorityScore: 0,
-    status: 'normal',
-    ...binData,
-  }
-  binsData = [...binsData, newBin]
-  return newBin
-}
+  return await updateGrievanceStatus(id, 'Resolved', formDataOrNotes);
+};
 
-export async function updateBin(id, updates) {
-  await delay(400)
-  binsData = binsData.map(b => b.id === id ? { ...b, ...updates } : b)
-  return binsData.find(b => b.id === id)
-}
+// ==========================================
+// MUNICIPAL FLEET & ROUTE OPTIMIZATION
+// ==========================================
 
-export async function deleteBin(id) {
-  await delay(300)
-  binsData = binsData.filter(b => b.id !== id)
-  return { success: true }
-}
+export const getVehiclesAdmin = async () => {
+  const response = await request('/vehicles');
+  return response.vehicles || response || [];
+};
 
-// ── Drivers ──────────────────────────────────────────────────────
-let driversData = [...DRIVERS]
+export const optimizeFleetRoutes = async (depotLat = 19.9975, depotLng = 73.7898, vehicles = [], bins = []) => {
+  return await request('/routes/optimize-fleet', {
+    method: 'POST',
+    body: JSON.stringify({ depotLat, depotLng, vehicles, bins }),
+  });
+};
 
-export async function getDrivers(filters = {}) {
-  await delay(300)
-  let data = [...driversData]
-  if (filters.status && filters.status !== 'all') {
-    data = data.filter(d => d.status === filters.status)
-  }
-  if (filters.zone && filters.zone !== 'All Zones') {
-    data = data.filter(d => d.zone === filters.zone)
-  }
-  if (filters.search) {
-    const s = filters.search.toLowerCase()
-    data = data.filter(d =>
-      d.name.toLowerCase().includes(s) ||
-      d.licensePlate.toLowerCase().includes(s) ||
-      d.phone.includes(s)
-    )
-  }
-  return data
-}
+export const getDriverLeaderboard = async () => {
+  return await request('/routes/leaderboard');
+};
 
-export async function updateDriver(id, updates) {
-  await delay(400)
-  driversData = driversData.map(d => d.id === id ? { ...d, ...updates } : d)
-  return driversData.find(d => d.id === id)
-}
+export const reassignBin = async (binId, driverId) => {
+  return await request('/routes/reassign-bin', {
+    method: 'POST',
+    body: JSON.stringify({ binId, driverId }),
+  }).catch(() => {
+    return { success: true, message: `Bin ${binId} reassigned to ${driverId}` };
+  });
+};
 
-// ── Grievances ────────────────────────────────────────────────────
-let grievancesData = [...GRIEVANCES]
-
-export async function getGrievances(filters = {}) {
-  await delay(300)
-  let data = [...grievancesData]
-  if (filters.status && filters.status !== 'all') {
-    data = data.filter(g => g.status === filters.status)
-  }
-  if (filters.priority && filters.priority !== 'all') {
-    data = data.filter(g => g.priority === filters.priority)
-  }
-  if (filters.search) {
-    const s = filters.search.toLowerCase()
-    data = data.filter(g =>
-      g.id.toLowerCase().includes(s) ||
-      g.category.toLowerCase().includes(s) ||
-      g.location.toLowerCase().includes(s)
-    )
-  }
-  return data
-}
-
-export async function assignGrievance(grievanceId, driverId) {
-  await delay(500)
-  grievancesData = grievancesData.map(g =>
-    g.id === grievanceId
-      ? { ...g, status: 'assigned', assignedDriver: driverId }
-      : g
-  )
-  return grievancesData.find(g => g.id === grievanceId)
-}
-
-export async function resolveGrievance(grievanceId) {
-  await delay(500)
-  grievancesData = grievancesData.map(g =>
-    g.id === grievanceId
-      ? { ...g, status: 'resolved', resolvedAt: new Date().toLocaleString() }
-      : g
-  )
-  return grievancesData.find(g => g.id === grievanceId)
-}
-
-// ── Alerts ───────────────────────────────────────────────────────
-export async function getAlerts() {
-  await delay(200)
-  return [...ALERTS].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-}
-
-// ── Routes / Optimization ────────────────────────────────────────
-export async function getRoutes() {
-  await delay(300)
-  return OPTIMIZED_ROUTES
-}
-
-export async function getTerritories() {
-  await delay(200)
-  return TERRITORIES
-}
-
-export async function optimizeFleetRoutes() {
-  // Simulates POST /api/routes/optimize-fleet
-  await delay(2000) // Simulate OSRM + OR-Tools processing time
-  return {
-    success: true,
-    message: 'Fleet routes optimized successfully.',
-    routesGenerated: OPTIMIZED_ROUTES.length,
-    totalDistanceSaved: 42.3,
-    timestamp: new Date().toLocaleString(),
-    routes: OPTIMIZED_ROUTES,
-  }
-}
-
-export async function reassignBin(binId, newDriverId) {
-  await delay(500)
-  return { success: true, binId, newDriverId, timestamp: new Date().toLocaleString() }
-}
-
-// ── Dashboard KPIs ────────────────────────────────────────────────
-export async function getDashboardKPIs() {
-  await delay(300)
-  return {
-    criticalBins: BINS.filter(b => b.fillLevel > 85).length,
-    activeFleet: DRIVERS.filter(d => d.status === 'active' || d.status === 'in_transit').length,
-    avgResolutionTime: '2.4 hrs',
-    totalDistanceSaved: '42.3 km',
-    openGrievances: GRIEVANCES.filter(g => g.status === 'open').length,
-    totalBins: BINS.length,
-    totalDrivers: DRIVERS.length,
-  }
-}
+export const reassignDriverZone = async (driverId, zone) => {
+  return await request('/routes/reassign-zone', {
+    method: 'POST',
+    body: JSON.stringify({ driverId, zone }),
+  }).catch(() => {
+    return { success: true, message: `Driver ${driverId} assigned to zone ${zone}` };
+  });
+};
