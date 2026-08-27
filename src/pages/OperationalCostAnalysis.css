@@ -1,0 +1,519 @@
+/* OperationalCostAnalysis.css */
+.oca-page {
+  padding: 24px;
+  background: #0f172a;
+  min-height: 100vh;
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+  color: #e2e8f0;
+}
+
+/* ---- Loading ---- */
+.oca-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  gap: 16px;
+  color: #94a3b8;
+}
+.oca-spinner {
+  width: 42px; height: 42px;
+  border: 3px solid #1e293b;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- Header ---- */
+.oca-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.oca-header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.oca-header-icon {
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  color: #fff;
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.oca-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0;
+}
+.oca-subtitle {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  margin: 2px 0 0;
+}
+.oca-header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.oca-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 16px;
+  border-radius: 8px;
+  font-size: 0.83rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+.oca-btn-ghost {
+  background: #1e293b;
+  color: #94a3b8;
+}
+.oca-btn-ghost:hover { background: #334155; color: #e2e8f0; }
+.oca-btn-primary {
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(37,99,235,0.3);
+}
+.oca-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(37,99,235,0.4); }
+
+/* ---- Fuel Selectors ---- */
+.oca-fuel-selectors {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.oca-fuel-card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 14px 16px;
+  border-top: 3px solid var(--zone-color);
+}
+.oca-fuel-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.oca-fuel-select-wrap {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.oca-fuel-chip {
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1.5px solid #334155;
+  background: #0f172a;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.oca-fuel-chip:hover { border-color: var(--chip-color); color: var(--chip-color); }
+.oca-fuel-chip.selected {
+  background: var(--chip-color);
+  border-color: var(--chip-color);
+  color: #fff;
+}
+
+/* ---- KPIs ---- */
+.oca-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.oca-kpi-card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  transition: transform 0.2s;
+}
+.oca-kpi-card:hover { transform: translateY(-2px); }
+.oca-kpi-icon {
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.oca-kpi-value {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #f1f5f9;
+}
+.oca-kpi-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+.oca-kpi-sub {
+  font-size: 0.7rem;
+  color: #475569;
+  margin-top: 2px;
+}
+
+/* ---- Zone Detail Cards ---- */
+.oca-zone-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.oca-zone-card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 14px;
+  overflow: hidden;
+}
+.oca-zone-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.oca-zone-truck { margin-left: auto; font-size: 0.8rem; opacity: 0.85; }
+.oca-fuel-badge {
+  padding: 3px 9px;
+  border-radius: 12px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+}
+.oca-zone-card-body { padding: 14px 16px; }
+.oca-zone-rows { display: flex; flex-direction: column; gap: 6px; }
+.oca-zone-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px solid #1e293b;
+  font-size: 0.82rem;
+}
+.oca-zone-row span { color: #94a3b8; }
+.oca-zone-row strong { color: #e2e8f0; }
+.oca-row-fuel strong { color: #f59e0b; }
+.oca-row-maint strong { color: #38bdf8; }
+.oca-maint-sublist {
+  padding: 4px 8px;
+  background: #0f172a;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 4px;
+}
+.oca-zone-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0 6px;
+  margin-top: 6px;
+  font-size: 1rem;
+  font-weight: 800;
+}
+.oca-zone-efficiency {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-top: 6px;
+}
+
+/* ---- Flowchart Component ---- */
+.oca-flowchart-card {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 20px;
+}
+.oca-flowchart-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #38bdf8;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #1e293b;
+  padding-bottom: 10px;
+}
+.oca-flowchart-pipeline {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.oca-fc-box {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  padding: 14px 10px;
+  text-align: center;
+  position: relative;
+  transition: transform 0.2s, border-color 0.2s;
+}
+.oca-fc-box:hover {
+  transform: translateY(-2px);
+  border-color: #38bdf8;
+}
+.oca-fc-step1 { border-top: 3px solid #3b82f6; }
+.oca-fc-step2 { border-top: 3px solid #8b5cf6; }
+.oca-fc-step3 { border-top: 3px solid #f59e0b; }
+.oca-fc-step4 { border-top: 3px solid #22c55e; background: rgba(34, 197, 94, 0.08); }
+
+.oca-fc-step-tag {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0f172a;
+  border: 1px solid #334155;
+  color: #94a3b8;
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 1px 7px;
+  border-radius: 10px;
+  letter-spacing: 0.5px;
+}
+.oca-fc-icon {
+  color: #38bdf8;
+  margin-bottom: 6px;
+}
+.oca-fc-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+.oca-fc-sub {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+.oca-fc-metric {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #38bdf8;
+  margin-top: 6px;
+}
+.oca-fc-highlight {
+  color: #4ade80;
+  font-size: 0.85rem;
+}
+
+.oca-fc-connector {
+  font-size: 1.2rem;
+  color: #475569;
+  font-weight: 900;
+}
+
+/* Branch Cards */
+.oca-flowchart-branches {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.oca-branch-card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.oca-branch-a { border-left: 3px solid #2563eb; }
+.oca-branch-b { border-left: 3px solid #16a34a; }
+
+.oca-branch-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.84rem;
+  color: #e2e8f0;
+  margin-bottom: 10px;
+}
+.oca-branch-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.oca-branch-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.8rem;
+}
+.oca-branch-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #94a3b8;
+}
+.oca-branch-item strong { color: #f1f5f9; }
+.oca-badge-chip {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  color: #fff;
+  font-weight: 700;
+}
+.oca-branch-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 800;
+  font-size: 0.9rem;
+  padding-top: 8px;
+  margin-top: 4px;
+  border-top: 1px solid #334155;
+}
+
+/* ---- Charts Section ---- */
+.oca-chart-section {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+.oca-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid #334155;
+  padding-bottom: 12px;
+}
+.oca-tab {
+  padding: 7px 16px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.oca-tab:hover { color: #94a3b8; background: #0f172a; }
+.oca-tab.active {
+  background: #2563eb;
+  color: #fff;
+}
+.oca-chart-panel { }
+.oca-chart-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  margin: 0 0 16px 0;
+}
+.oca-chart-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.oca-chart-half {}
+
+/* ---- Projection Table ---- */
+.oca-projection-table {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #334155;
+}
+.oca-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.oca-table th {
+  text-align: left;
+  padding: 10px 14px;
+  background: #0f172a;
+  color: #94a3b8;
+  font-weight: 600;
+  border-bottom: 1px solid #334155;
+}
+.oca-table td {
+  padding: 9px 14px;
+  border-bottom: 1px solid #1e293b;
+  color: #cbd5e1;
+}
+.oca-table tr:hover td { background: #0f172a; }
+.oca-td-blue { color: #60a5fa; font-weight: 700; }
+.oca-td-green { color: #4ade80; font-weight: 700; }
+.oca-td-purple { color: #a78bfa; font-weight: 800; }
+
+/* ---- Assumptions ---- */
+.oca-assumptions {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 16px 20px;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+.oca-assumptions h4 {
+  color: #94a3b8;
+  margin: 0 0 10px 0;
+  font-size: 0.84rem;
+}
+.oca-assumptions ul {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.oca-assumptions li strong { color: #94a3b8; }
+
+/* ---- Responsive ---- */
+@media (max-width: 900px) {
+  .oca-kpis { grid-template-columns: 1fr 1fr; }
+  .oca-zone-cards { grid-template-columns: 1fr; }
+  .oca-chart-row { grid-template-columns: 1fr; }
+  .oca-fuel-selectors { grid-template-columns: 1fr; }
+  .oca-flowchart-pipeline {
+    grid-template-columns: 1fr;
+  }
+  .oca-fc-connector {
+    transform: rotate(90deg);
+    text-align: center;
+    margin: 4px 0;
+  }
+  .oca-flowchart-branches {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .oca-kpis { grid-template-columns: 1fr; }
+  .oca-header { flex-direction: column; align-items: flex-start; }
+}

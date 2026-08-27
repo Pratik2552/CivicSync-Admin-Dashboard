@@ -7,16 +7,26 @@ import {
   MessageSquareWarning,
   LogOut,
   Building2,
+  CreditCard,
+  Car,
+  Users,
+  ShieldAlert,
+  BarChart2
 } from 'lucide-react'
 import { logout, getAuthUser } from '../../services/api.js'
 import './Sidebar.css'
 
 const NAV_ITEMS = [
-  { to: '/admin/dashboard',       icon: LayoutDashboard,      label: 'Dashboard' },
-  { to: '/admin/route-optimizer', icon: Route,                label: 'Route Optimizer' },
-  { to: '/admin/drivers',         icon: Truck,                label: 'Drivers & Fleet' },
-  { to: '/admin/bins',            icon: Container,            label: 'Bins' },
-  { to: '/admin/grievances',      icon: MessageSquareWarning, label: 'Grievances' },
+  { to: '/admin/dashboard',              icon: LayoutDashboard,      label: 'Dashboard' },
+  { to: '/admin/route-optimizer',        icon: Route,                label: 'Route Optimizer' },
+  { to: '/admin/drivers',                icon: Truck,                label: 'Drivers & Fleet' },
+  { to: '/admin/vehicle-profiles',       icon: Car,                 label: 'Vehicle Profiles' },
+  { to: '/admin/bins',                   icon: Container,            label: 'Bins' },
+  { to: '/admin/grievances',             icon: MessageSquareWarning, label: 'Grievances' },
+  { to: '/admin/dead-animal-complaints', icon: ShieldAlert,          label: 'Dead Animal Alerts' },
+  { to: '/admin/operational-cost',        icon: BarChart2,             label: 'Operational Costs' },
+  { to: '/admin/carbon-cards',           icon: CreditCard,           label: 'Carbon Cards' },
+  { to: '/admin/live-users',             icon: Users,                label: 'Live Users' },
 ]
 
 export default function Sidebar() {

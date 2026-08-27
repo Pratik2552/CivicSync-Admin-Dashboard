@@ -378,10 +378,11 @@ export default function Grievances() {
                 <option value="" disabled>Select driver / vehicle unit...</option>
                 {availableDrivers.map((v) => {
                   const vehicleId = v.id || v.vehicle_id;
+                  const driverId = v.driver_id || vehicleId;
                   const driverName = v.driver_name || v.driverName || 'Driver';
                   const plate = v.license_plate || 'MH-15';
                   return (
-                    <option key={vehicleId} value={vehicleId}>
+                    <option key={vehicleId} value={driverId}>
                       {driverName} — {plate} (UUID: {String(vehicleId).substring(0, 8)}...)
                     </option>
                   );
