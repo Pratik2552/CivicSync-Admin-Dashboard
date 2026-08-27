@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
-import { login } from '../services/api';
+import { Truck, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 import './Login.css';
 
-const Login = () => {
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+
+const VehicleAuthorityLogin = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -23,20 +24,28 @@ const Login = () => {
       setIsLoading(true);
       setError('');
 
-      const response = await login(email, password);
+      const response = await fetch(`${API_BASE_URL}/api/auth/vehicle-authority/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
 
-      if (response && response.access_token) {
-        // Save Admin Token and Admin Profile details to localStorage
-        localStorage.setItem('civicsync_admin_token', response.access_token);
-        localStorage.setItem('civicsync_admin_user', JSON.stringify(response.user || { role: 'Admin' }));
+      const data = await response.json();
 
-        // Redirect to Admin Dashboard
-        navigate('/admin/dashboard');
+      if (response.ok && data.access_token) {
+        // Save Vehicle Authority Token and Profile to localStorage
+        localStorage.setItem('civicsync_authority_token', data.access_token);
+        localStorage.setItem('civicsync_authority_user', JSON.stringify(data.user || { role: 'vehicle_authority' }));
+
+        // Redirect to Vehicle Authority Dashboard
+        navigate('/vehicle-authority/dashboard');
       } else {
-        setError('Invalid admin credentials. Please try again.');
+        setError(data.error || 'Invalid credentials. Please try again.');
       }
     } catch (err) {
-      setError(err.message || 'An error occurred during administrator sign in.');
+      setError('Network error. Please check your connection.');
     } finally {
       setIsLoading(false);
     }
@@ -46,44 +55,45 @@ const Login = () => {
     <div className="login-container">
       <div className="login-left-panel">
         <div className="login-branding">
-          <Building2 size={64} className="login-logo" />
+          <Truck size={64} className="login-logo" />
           <h1 className="login-title">CivicSync</h1>
-          <h2 className="login-subtitle">Municipal Administration Portal</h2>
-          <p className="login-tagline">Pune Municipal Corporation</p>
+          <h2 className="login-subtitle">Vehicle Authority Portal</h2>
+          <p className="login-tagline">Fleet Management System</p>
         </div>
         
         <div className="login-features">
           <div className="feature-item">
             <CheckCircle2 size={20} className="feature-icon" />
-            <span>Intelligent Waste Collection Routing</span>
+            <span>Real-time Vehicle Tracking</span>
           </div>
           <div className="feature-item">
             <CheckCircle2 size={20} className="feature-icon" />
-            <span>Real-time Fleet Tracking & Telemetry</span>
+            <span>Fleet Performance Monitoring</span>
           </div>
           <div className="feature-item">
             <CheckCircle2 size={20} className="feature-icon" />
-            <span>Citizen Grievance Management</span>
+            <span>Driver & Route Management</span>
           </div>
         </div>
       </div>
 
       <div className="login-right-panel">
         <div className="login-form-wrapper">
-          <h2 className="login-heading">Administrator Sign In</h2>
+          <h2 className="login-heading">Vehicle Authority Sign In</h2>
+          <p className="login-subtext">Access your vehicle management dashboard</p>
           
           {error && <div className="login-error">{error}</div>}
           
           <form onSubmit={handleSubmit} className="login-form">
             <div className="form-group">
-              <label className="form-label" htmlFor="email">Official Email / Username</label>
+              <label className="form-label" htmlFor="email">Email Address</label>
               <input
                 id="email"
                 type="email"
                 className="form-input"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@pmc.gov.in"
+                placeholder="authority@civicsync.com"
                 required
                 disabled={isLoading}
               />
@@ -98,36 +108,28 @@ const Login = () => {
                   className="form-input"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder="Enter your password"
                   required
                   disabled={isLoading}
                 />
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   className="password-toggle"
                   onClick={() => setShowPassword(!showPassword)}
-                  aria-label="Toggle password visibility"
+                  disabled={isLoading}
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
             </div>
 
-            <button 
-              type="submit" 
-              className="btn btn-primary login-btn"
-              disabled={isLoading}
-            >
-              {isLoading ? 'Signing In...' : 'Sign In'}
+            <button type="submit" className="login-button" disabled={isLoading}>
+              {isLoading ? 'Signing In...' : 'Sign In to Dashboard'}
             </button>
-            
-            <div className="login-actions">
-              <a href="#" className="forgot-password">Forgot Password?</a>
-            </div>
           </form>
-          
-          <div className="login-security-notice">
-            <p>Authorized personnel only. All access is logged and monitored.</p>
+
+          <div className="login-footer-note">
+            <p>Credentials provided by system administrator</p>
           </div>
         </div>
       </div>
@@ -135,4 +137,4 @@ const Login = () => {
   );
 };
 
-export default Login;
+export default VehicleAuthorityLogin;

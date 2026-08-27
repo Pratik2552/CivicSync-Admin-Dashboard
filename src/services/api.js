@@ -1,12 +1,17 @@
 const API_BASE_URL = 
   (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) 
-    || 'http://localhost:5000/api';
+    || 'http://localhost:3000/api';
 
 /**
  * Generic fetch wrapper for Admin API requests with automatic JWT token injection
  */
 async function request(endpoint, options = {}) {
   const token = localStorage.getItem('civicsync_admin_token');
+
+  // Log token status for debugging
+  if (!token) {
+    console.warn('⚠️ No admin token found in localStorage. User may need to log in.');
+  }
 
   // Check if body is FormData; if so, let browser handle Content-Type boundary headers automatically
   const isFormData = options.body instanceof FormData;
@@ -25,6 +30,15 @@ async function request(endpoint, options = {}) {
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
+    // Handle token expiration - redirect to login
+    if (response.status === 401 && (data.error === 'Invalid or expired token.' || data.error === 'Access denied. No token provided.')) {
+      console.error('🔒 Token expired or invalid. Redirecting to login...');
+      localStorage.removeItem('civicsync_admin_token');
+      localStorage.removeItem('civicsync_admin_user');
+      window.location.href = '/';
+      return;
+    }
+
     const error = new Error(data.error || data.message || 'An error occurred during API request.');
     error.status = response.status;
     error.data = data;
@@ -39,10 +53,23 @@ async function request(endpoint, options = {}) {
 // ==========================================
 
 export const login = async (email, password) => {
-  return await request('/auth/admin/login', {
+  const response = await request('/auth/admin/login', {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   });
+
+  // Store both access_token and refresh_token
+  if (response.access_token) {
+    localStorage.setItem('civicsync_admin_token', response.access_token);
+    if (response.refresh_token) {
+      localStorage.setItem('civicsync_admin_refresh_token', response.refresh_token);
+    }
+    if (response.expires_at) {
+      localStorage.setItem('civicsync_admin_token_expires_at', response.expires_at);
+    }
+  }
+
+  return response;
 };
 
 export const getAuthUser = () => {
@@ -55,8 +82,35 @@ export const getAuthUser = () => {
   }
 };
 
+export const isAuthenticated = () => {
+  const token = localStorage.getItem('civicsync_admin_token');
+  const user = getAuthUser();
+  return !!(token && user);
+};
+
+export const getTokenExpiryStatus = () => {
+  const token = localStorage.getItem('civicsync_admin_token');
+  const expiresAt = localStorage.getItem('civicsync_admin_token_expires_at');
+  
+  if (!token) return { hasToken: false, isExpired: true, message: 'No token found' };
+  if (!expiresAt) return { hasToken: true, isExpired: false, message: 'No expiry time stored' };
+  
+  const expiryTime = new Date(expiresAt).getTime();
+  const currentTime = Date.now();
+  const isExpired = currentTime >= expiryTime;
+  
+  return { 
+    hasToken: true, 
+    isExpired, 
+    message: isExpired ? 'Token has expired' : 'Token is valid',
+    expiresAt: new Date(expiresAt).toLocaleString()
+  };
+};
+
 export const logout = () => {
   localStorage.removeItem('civicsync_admin_token');
+  localStorage.removeItem('civicsync_admin_refresh_token');
+  localStorage.removeItem('civicsync_admin_token_expires_at');
   localStorage.removeItem('civicsync_admin_user');
 };
 
@@ -184,6 +238,53 @@ export const getVehiclesAdmin = async () => {
   return response.vehicles || response || [];
 };
 
+export const createVehicle = async (vehicleData) => {
+  return await request('/vehicles', {
+    method: 'POST',
+    body: JSON.stringify(vehicleData),
+  });
+};
+
+export const updateVehicle = async (id, vehicleData) => {
+  return await request(`/vehicles/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(vehicleData),
+  });
+};
+
+export const deleteVehicle = async (id) => {
+  return await request(`/vehicles/${id}`, {
+    method: 'DELETE',
+  });
+};
+
+// ==========================================
+// CITIZEN/USER MANAGEMENT
+// ==========================================
+
+export const getAllCitizens = async () => {
+  const response = await request('/admin/citizens');
+  return response.citizens || response || [];
+};
+
+export const getCitizenById = async (id) => {
+  return await request(`/admin/citizens/${id}`);
+};
+
+export const toggleCitizenStatus = async (id) => {
+  return await request(`/admin/citizens/${id}/toggle-status`, {
+    method: 'PATCH',
+  });
+};
+
+export const getAdminStats = async () => {
+  return await request('/admin/stats');
+};
+
+// ==========================================
+// ROUTE OPTIMIZATION
+// ==========================================
+
 export const optimizeFleetRoutes = async (depotLat = 19.9975, depotLng = 73.7898, vehicles = [], bins = []) => {
   return await request('/routes/optimize-fleet', {
     method: 'POST',
@@ -212,3 +313,30 @@ export const reassignDriverZone = async (driverId, zone) => {
     return { success: true, message: `Driver ${driverId} assigned to zone ${zone}` };
   });
 };
+
+export const getCarbonCardHolders = async () => {
+  const response = await request('/carbon-points/admin/all');
+  return response.users || [];
+};
+
+// ==========================================
+// KML MAP & TERRITORY ENDPOINTS
+// ==========================================
+
+export const getKMLAdminData = async () => {
+  return await request('/kml/zones');
+};
+
+export const toggleKMLBinCollection = async (binName, collected, driverName = '') => {
+  return await request('/kml/mark-collected', {
+    method: 'POST',
+    body: JSON.stringify({ binName, collected, driverName, isAdminOverride: true }),
+  });
+};
+
+export const assignDriverToKMLZone = async (driverId, driverName, licensePlate, zoneName) => {
+  return await request('/kml/assign-zone', {
+    method: 'POST',
+    body: JSON.stringify({ driverId, driverName, licensePlate, zoneName }),
+  });
+};

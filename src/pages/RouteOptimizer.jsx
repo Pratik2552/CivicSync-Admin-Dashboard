@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Polyline, Rectangle, Popup, useMap } from 'react-leaflet';
-import { RefreshCw, MapPin, Settings, Info, CheckCircle, AlertTriangle, Map, Search, Plus, Maximize2, Minimize2, Truck, Navigation } from 'lucide-react';
+import { MapContainer, TileLayer, CircleMarker, Polyline, Polygon, Rectangle, Marker, Popup, useMap } from 'react-leaflet';
+import { RefreshCw, MapPin, Settings, Info, CheckCircle, AlertTriangle, Map, Search, Plus, Maximize2, Minimize2, Truck, Navigation, Check, X, UserCheck } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { optimizeFleetRoutes, reassignBin, getVehiclesAdmin, getBins } from '../services/api.js';
+import { optimizeFleetRoutes, reassignBin, getVehiclesAdmin, getBins, getKMLAdminData, toggleKMLBinCollection, assignDriverToKMLZone } from '../services/api.js';
 import './RouteOptimizer.css';
 
 delete L.Icon.Default.prototype._getIconUrl;
@@ -88,10 +88,71 @@ export default function RouteOptimizer() {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
-  // Load Live Drivers & Bins from Database on Mount
+  const [kmlData, setKmlData] = useState(null);
+
+  // Form State: Driver to Zone Assignment
+  const [selectedDriverForZone, setSelectedDriverForZone] = useState('');
+  const [selectedZoneForAssign, setSelectedZoneForAssign] = useState('ZONE A');
+
+  const createGarbageTruckIcon = (label, color = '#2563eb') => {
+    return L.divIcon({
+      className: 'custom-garbage-truck-marker',
+      html: `<div style="background:${color};color:white;padding:4px 8px;border-radius:16px;border:2px solid white;box-shadow:0 3px 8px rgba(0,0,0,0.35);font-size:12px;font-weight:bold;white-space:nowrap;display:flex;align-items:center;gap:4px;">🚛 <span>${label}</span></div>`,
+      iconSize: [110, 30],
+      iconAnchor: [55, 15],
+    });
+  };
+
+  const handleAssignDriverToZone = async (e) => {
+    e.preventDefault();
+    if (!selectedDriverForZone || !selectedZoneForAssign) {
+      setErrorMsg('Please select a driver and a zone.');
+      return;
+    }
+
+    try {
+      const selectedDriverObj = dbDrivers.find(d => String(d.id || d.vehicle_id) === String(selectedDriverForZone));
+      const driverName = selectedDriverObj?.driver_name || selectedDriverObj?.driverName || `Driver ${selectedDriverForZone}`;
+      const licensePlate = selectedDriverObj?.license_plate || 'MH-15-XX-9999';
+
+      const res = await assignDriverToKMLZone(selectedDriverForZone, driverName, licensePlate, selectedZoneForAssign);
+      if (res && res.success) {
+        setStatusMsg(`Driver ${driverName} (${licensePlate}) assigned to ${selectedZoneForAssign}!`);
+        // Refresh KML data
+        const freshKML = await getKMLAdminData();
+        if (freshKML && freshKML.success) setKmlData(freshKML);
+        setTimeout(() => setStatusMsg(''), 5000);
+      }
+    } catch (err) {
+      console.error('Failed to assign driver to zone:', err);
+      setErrorMsg('Failed to assign driver to zone.');
+    }
+  };
+
+  const handleToggleBin = async (binName, currentStatus) => {
+    try {
+      const res = await toggleKMLBinCollection(binName, !currentStatus);
+      if (res && res.success) {
+        setStatusMsg(`Bin ${binName} collection status changed to ${!currentStatus ? 'YES (Collected)' : 'NO (Pending)'}`);
+        // Refresh KML data
+        const freshKML = await getKMLAdminData();
+        if (freshKML && freshKML.success) setKmlData(freshKML);
+        setTimeout(() => setStatusMsg(''), 4000);
+      }
+    } catch (err) {
+      console.error('Failed to toggle bin collection:', err);
+    }
+  };
+
+  // Load Live Drivers, Bins & KML Data from Database on Mount
   useEffect(() => {
     async function loadDataAndTelemetry() {
       try {
+        const kmlRes = await getKMLAdminData().catch(() => null);
+        if (kmlRes && kmlRes.success) {
+          setKmlData(kmlRes);
+        }
+
         const dbBins = await getBins();
         if (dbBins && dbBins.length > 0) {
           setGeneratedBins(dbBins);
@@ -140,6 +201,11 @@ export default function RouteOptimizer() {
         const vehiclesList = await getVehiclesAdmin();
         const activeVehicles = vehiclesList.filter((v) => (v.status || '').toLowerCase() !== 'maintenance');
         setLiveVehicles(activeVehicles);
+
+        const freshKML = await getKMLAdminData().catch(() => null);
+        if (freshKML && freshKML.success) {
+          setKmlData(freshKML);
+        }
       } catch (err) {
         console.error('Telemetry polling error:', err);
       }
@@ -376,16 +442,166 @@ export default function RouteOptimizer() {
             <div className={`ro-map-content-area ${isFullscreen ? 'fullscreen-active' : ''}`}>
               <div className="ro-map-view-container">
                 <MapContainer
-                  center={[19.9975, 73.7898]}
-                  zoom={12}
+                  center={kmlData?.depot ? [kmlData.depot.lat, kmlData.depot.lng] : [19.892379, 74.484606]}
+                  zoom={14}
                   style={{ height: '100%', width: '100%', borderRadius: 6 }}
                 >
                   <TileLayer
-                    url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-                    attribution='&copy; CARTO'
+                    url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                    attribution="Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community"
                   />
 
                   <MapRecenter bounds={activeMapFocusBounds} isFullscreen={isFullscreen} />
+
+                  {/* KML 1. Official KML Zone Polygons (ZONE A & ZONE B) */}
+                  {kmlData?.zones?.map((zone) => {
+                    const isZoneA = zone.name.includes('ZONE A');
+                    const color = isZoneA ? '#2563eb' : '#16a34a';
+                    return (
+                      <Polygon
+                        key={`kml-zone-${zone.id}`}
+                        positions={zone.coordinates}
+                        pathOptions={{
+                          color: color,
+                          weight: 3,
+                          fillColor: color,
+                          fillOpacity: 0.18,
+                          dashArray: '4,4',
+                        }}
+                      >
+                        <Popup>
+                          <div style={{ fontSize: '0.85rem' }}>
+                            <strong style={{ color }}>📍 {zone.name}</strong><br />
+                            <strong>Assigned Driver:</strong> {zone.assignedDriverName || 'Unassigned'}<br />
+                            <strong>Vehicle Plate:</strong> {zone.assignedLicensePlate || 'MH-15-XX-0000'}
+                          </div>
+                        </Popup>
+                      </Polygon>
+                    );
+                  })}
+
+                  {/* KML 2. Official Marked Path Routes (ROUTE-TRUCK-001 & ROUTE-TRUCK-002) */}
+                  {kmlData?.routes?.map((route) => {
+                    const isTruck1 = route.name.includes('TRUCK-001');
+                    const isTruck2 = route.name.includes('TRUCK-002');
+                    const color = isTruck1 ? '#2563eb' : isTruck2 ? '#9333ea' : '#d97706';
+                    return (
+                      <Polyline
+                        key={`kml-route-${route.id}`}
+                        positions={route.coordinates}
+                        pathOptions={{
+                          color: color,
+                          weight: 4.5,
+                          opacity: 0.85,
+                          dashArray: route.name.includes('Google') ? '6,6' : null,
+                        }}
+                      >
+                        <Popup>
+                          <div>
+                            <strong>🗺️ {route.name}</strong><br />
+                            Marked Collection Route
+                          </div>
+                        </Popup>
+                      </Polyline>
+                    );
+                  })}
+
+                  {/* KML 3. Pickup Bins / Stops (Green = YES Collected, Red = NO Pending) */}
+                  {kmlData?.bins?.map((bin) => {
+                    const isCollected = bin.isCollected;
+                    const markerColor = isCollected ? '#16a34a' : '#dc2626';
+
+                    return (
+                      <CircleMarker
+                        key={`kml-bin-${bin.id}`}
+                        center={[bin.lat, bin.lng]}
+                        radius={9}
+                        pathOptions={{
+                          color: '#ffffff',
+                          fillColor: markerColor,
+                          fillOpacity: 1,
+                          weight: 2.5,
+                        }}
+                      >
+                        <Popup>
+                          <div style={{ fontSize: '0.85rem', textAlign: 'center' }}>
+                            <strong>🗑️ {bin.name}</strong><br />
+                            Zone: <strong>{bin.zone}</strong><br />
+                            Status: <span style={{ 
+                              fontWeight: 700, 
+                              color: isCollected ? '#16a34a' : '#dc2626',
+                              padding: '2px 6px',
+                              borderRadius: 4,
+                              background: isCollected ? '#dcfce7' : '#fee2e2'
+                            }}>
+                              {isCollected ? '✅ COLLECTED (YES)' : '🔴 PENDING (NO)'}
+                            </span>
+                            <div style={{ marginTop: 8 }}>
+                              <button
+                                onClick={() => handleToggleBin(bin.name, isCollected)}
+                                style={{
+                                  padding: '4px 8px',
+                                  fontSize: '0.75rem',
+                                  borderRadius: 4,
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  background: isCollected ? '#dc2626' : '#16a34a',
+                                  color: '#fff',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {isCollected ? 'Mark as NO (Pending)' : 'Mark as YES (Collected)'}
+                              </button>
+                            </div>
+                          </div>
+                        </Popup>
+                      </CircleMarker>
+                    );
+                  })}
+
+                  {/* KML 4. Depot Location */}
+                  {kmlData?.depot && (
+                    <CircleMarker
+                      center={[kmlData.depot.lat, kmlData.depot.lng]}
+                      radius={12}
+                      pathOptions={{
+                        color: '#ffffff',
+                        fillColor: '#0f172a',
+                        fillOpacity: 1,
+                        weight: 3,
+                      }}
+                    >
+                      <Popup>
+                        <div style={{ textAlign: 'center' }}>
+                          <strong>🏢 CENTRAL DEPOT</strong><br />
+                          <small>All vehicles return here after collection</small>
+                        </div>
+                      </Popup>
+                    </CircleMarker>
+                  )}
+
+                  {/* KML 5. Assigned Garbage Trucks on Map */}
+                  {kmlData?.trucks?.map((truck) => {
+                    const isZoneA = truck.zone === 'ZONE A';
+                    const truckColor = isZoneA ? '#2563eb' : '#16a34a';
+                    return (
+                      <Marker
+                        key={`garbage-truck-${truck.id}`}
+                        position={[truck.lat, truck.lng]}
+                        icon={createGarbageTruckIcon(`${truck.driverName || 'Driver'} (${truck.zone})`, truckColor)}
+                      >
+                        <Popup>
+                          <div style={{ fontSize: '0.85rem' }}>
+                            <strong style={{ color: truckColor }}>🚛 Garbage Truck: {truck.licensePlate || truck.id}</strong><br />
+                            <strong>Assigned Driver:</strong> {truck.driverName}<br />
+                            <strong>Territory:</strong> {truck.zone}<br />
+                            <strong>Capacity:</strong> {truck.capacityKg || 1000} kg<br />
+                            <strong>Status:</strong> {truck.status || 'Active On Duty'}
+                          </div>
+                        </Popup>
+                      </Marker>
+                    );
+                  })}
 
                   {/* 1. Driver Territory Boundaries */}
                   {driverTerritories.map((t) => {
@@ -566,7 +782,134 @@ export default function RouteOptimizer() {
         {/* RIGHT: Territory Search & Assignment Panel */}
         <div className="ro-details-col" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           
-          {/* Territory Search & Assignment Card */}
+          {/* KML Live Bin Collection Tracker Card */}
+          <div className="panel" style={{ background: '#fff', borderRadius: 8, padding: '1rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <div className="panel-header" style={{ marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0 }}><CheckCircle size={16} style={{ marginRight: 6, color: '#16a34a' }} /> KML Collection Tracker</h3>
+              <span className="badge badge-primary" style={{ fontSize: '0.75rem' }}>
+                {kmlData?.bins?.filter(b => b.isCollected).length || 0} / {kmlData?.bins?.length || 0} Collected
+              </span>
+            </div>
+
+            <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+              Bins on the marked path. Toggle <strong>Yes / No</strong> to simulate or monitor live collection. Collected bins turn <strong style={{ color: '#16a34a' }}>GREEN</strong> on map.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '240px', overflowY: 'auto' }}>
+              {kmlData?.bins?.map(bin => {
+                const isCollected = bin.isCollected;
+                return (
+                  <div key={`side-bin-${bin.id}`} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: 6,
+                    border: '1px solid #e2e8f0',
+                    background: isCollected ? '#f0fdf4' : '#f8fafc',
+                  }}>
+                    <div>
+                      <strong style={{ fontSize: '0.85rem' }}>{bin.name}</strong>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', marginLeft: 8 }}>({bin.zone})</span>
+                    </div>
+
+                    <button
+                      onClick={() => handleToggleBin(bin.name, isCollected)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        padding: '0.3rem 0.6rem',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        borderRadius: 4,
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: isCollected ? '#16a34a' : '#cbd5e1',
+                        color: isCollected ? '#ffffff' : '#334155',
+                      }}
+                    >
+                      {isCollected ? <Check size={13} /> : <X size={13} />}
+                      {isCollected ? 'YES' : 'NO'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          
+          {/* Assign Driver to Territory Zone Card (Strict 1:1 Constraint) */}
+          <div className="panel" style={{ background: '#fff', borderRadius: 8, padding: '1rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderTop: '4px solid #2563eb' }}>
+            <div className="panel-header" style={{ marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0 }}><UserCheck size={16} style={{ marginRight: 6, color: '#2563eb' }} /> Assign Driver to Zone</h3>
+              <span className="badge badge-warning" style={{ fontSize: '0.7rem' }}>Strict 1 Driver Per Zone</span>
+            </div>
+            
+            <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+              Assign one exclusive driver per zone. The assigned driver will appear as a <strong>Garbage Truck 🚛</strong> on the map.
+            </p>
+
+            {/* Current 1:1 Live Assignments Summary */}
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '0.6rem 0.8rem', marginBottom: '0.75rem', fontSize: '0.8rem' }}>
+              <div style={{ fontWeight: 700, marginBottom: 4, color: '#334155' }}>Current Zone Assignments (1:1):</div>
+              {kmlData?.zones?.map((z) => {
+                const isA = z.name.includes('ZONE A');
+                return (
+                  <div key={`current-assign-${z.name}`} style={{ display: 'flex', justifyBetween: 'space-between', alignItems: 'center', margin: '2px 0' }}>
+                    <span style={{ color: isA ? '#2563eb' : '#16a34a', fontWeight: 600 }}>
+                      {isA ? '📍 Zone 1 (Zone A)' : '📍 Zone 2 (Zone B)'}:
+                    </span>
+                    <strong style={{ marginLeft: 'auto' }}>
+                      👤 {z.assignedDriverName || 'Unassigned'} ({z.assignedLicensePlate || 'MH-15-XX'})
+                    </strong>
+                  </div>
+                );
+              })}
+            </div>
+
+            <form onSubmit={handleAssignDriverToZone} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 600, fontSize: '0.85rem' }}>Select Driver</label>
+                <select
+                  className="form-select"
+                  value={selectedDriverForZone}
+                  onChange={(e) => setSelectedDriverForZone(e.target.value)}
+                  required
+                >
+                  <option value="">-- Choose Driver from Database --</option>
+                  {dbDrivers.map((d) => {
+                    const vId = d.id || d.vehicle_id;
+                    const dName = d.driver_name || d.driverName || 'Driver';
+                    const plate = d.license_plate || vId;
+                    const currentAssignedZone = kmlData?.zones?.find(z => z.vehicleId === vId || z.assignedDriverName === dName)?.name || '';
+
+                    return (
+                      <option key={vId} value={vId}>
+                        👤 {dName} ({plate}) {currentAssignedZone ? `[Assigned: ${currentAssignedZone}]` : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 600, fontSize: '0.85rem' }}>Assign Exclusive Zone</label>
+                <select
+                  className="form-select"
+                  value={selectedZoneForAssign}
+                  onChange={(e) => setSelectedZoneForAssign(e.target.value)}
+                  required
+                >
+                  <option value="ZONE A">📍 Zone 1 (Zone A - North Territory)</option>
+                  <option value="ZONE B">📍 Zone 2 (Zone B - South Territory)</option>
+                </select>
+              </div>
+
+              <button type="submit" className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <Truck size={16} /> Assign Exclusive Driver &amp; Show Truck on Map
+              </button>
+            </form>
+          </div>
           <div className="panel" style={{ background: '#fff', borderRadius: 8, padding: '1rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <div className="panel-header" style={{ marginBottom: '0.5rem' }}>
               <h3><Map size={16} style={{ marginRight: 6 }} /> Place Search &amp; Territory Plotter</h3>

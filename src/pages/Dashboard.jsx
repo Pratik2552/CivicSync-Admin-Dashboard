@@ -3,7 +3,7 @@ import {
   AlertTriangle, Truck, Clock, Route, RefreshCw, CheckCircle2, 
   BatteryMedium, Zap, ShieldAlert, MapPin, Activity, Award, Trophy, Medal 
 } from 'lucide-react';
-import { MapContainer, TileLayer, CircleMarker, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Marker, Popup, Polygon, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -20,7 +20,7 @@ import StatCard from '../components/common/StatCard';
 import AlertItem from '../components/common/AlertItem';
 
 // API Service imports
-import { getBins, getVehiclesAdmin, getDriverLeaderboard } from '../services/api.js';
+import { getBins, getVehiclesAdmin, getDriverLeaderboard, getKMLAdminData } from '../services/api.js';
 
 import './Dashboard.css';
 
@@ -33,6 +33,7 @@ const truckIcon = L.divIcon({
 
 const Dashboard = () => {
   const [lastUpdated, setLastUpdated] = useState(new Date().toLocaleTimeString());
+  const [kmlData, setKmlData] = useState(null);
   const [bins, setBins] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
@@ -43,19 +44,43 @@ const Dashboard = () => {
   const refreshData = async () => {
     setIsLoading(true);
     try {
-      // 1. Fetch live bins from Supabase/Backend
-      const dbBins = await getBins();
-      const formattedBins = (dbBins || []).map(b => ({
-        id: b.id,
-        lat: parseFloat(b.latitude || b.lat || 19.9975),
-        lng: parseFloat(b.longitude || b.lng || 73.7898),
-        ward: b.ward || 'Nashik Central',
-        fillLevel: b.fill_level !== undefined ? b.fill_level : (b.fillLevel || 0),
-        batteryLevel: b.battery_level || 94,
-        lastCollection: b.last_collection || 'Today',
-        currentWeightKg: b.current_weight_kg || 250,
-        status: b.status || 'Normal'
-      }));
+      // 1. Fetch live mapping3.kml data
+      let formattedBins = [];
+      try {
+        const kmlRes = await getKMLAdminData();
+        if (kmlRes && kmlRes.bins) {
+          setKmlData(kmlRes);
+          formattedBins = kmlRes.bins.map(b => ({
+            id: b.id || b.name,
+            name: b.name,
+            lat: b.lat,
+            lng: b.lng,
+            ward: b.zone || 'Nashik Zone',
+            fillLevel: b.isCollected ? 10 : 88,
+            batteryLevel: 94,
+            currentWeightKg: 250,
+            status: b.isCollected ? 'Collected' : 'Pending'
+          }));
+        }
+      } catch (kmlErr) {
+        console.warn('Could not fetch KML admin data:', kmlErr);
+      }
+
+      // Fallback to getBins if KML fails
+      if (formattedBins.length === 0) {
+        const dbBins = await getBins();
+        formattedBins = (dbBins || []).map(b => ({
+          id: b.id,
+          lat: parseFloat(b.latitude || b.lat || 19.892379),
+          lng: parseFloat(b.longitude || b.lng || 74.484606),
+          ward: b.ward || 'Nashik Zone',
+          fillLevel: b.fill_level !== undefined ? b.fill_level : (b.fillLevel || 0),
+          batteryLevel: b.battery_level || 94,
+          lastCollection: b.last_collection || 'Today',
+          currentWeightKg: b.current_weight_kg || 250,
+          status: b.status || 'Normal'
+        }));
+      }
       setBins(formattedBins);
 
       // 2. Fetch live vehicles & telemetry
@@ -64,8 +89,8 @@ const Dashboard = () => {
         id: v.id || v.vehicle_id,
         name: v.driver_name || v.driverName || 'Assigned Driver',
         licensePlate: v.license_plate || v.licensePlate || 'MH-15-EX-1001',
-        lat: parseFloat(v.latitude || 19.9975),
-        lng: parseFloat(v.longitude || 73.7898),
+        lat: parseFloat(v.latitude || 19.892379),
+        lng: parseFloat(v.longitude || 74.484606),
         currentLoad: v.current_load_kg || v.payload_kg || 0,
         maxCapacity: v.capacity_kg || 1000,
         status: (v.status || 'active').toLowerCase(),
@@ -73,13 +98,12 @@ const Dashboard = () => {
       }));
       setVehicles(formattedVehicles);
 
-      // 3. Fetch driver leaderboard stats (or fallback to real dbVehicles names if API empty)
+      // 3. Fetch driver leaderboard stats
       let lbData = [];
       try {
         const res = await getDriverLeaderboard();
         if (res && res.leaderboard) lbData = res.leaderboard;
       } catch (e) {
-        // Fallback mapping from dbVehicles if endpoint fails
         lbData = formattedVehicles.map((v, idx) => ({
           vehicleId: v.id,
           driverName: v.name,
@@ -89,7 +113,6 @@ const Dashboard = () => {
         }));
       }
 
-      // Ensure we use real driver names from database and sort top 3 (3, 2, 1 podium style)
       setLeaderboard(lbData.slice(0, 3));
 
       // 4. Extract critical bins as live alerts stream
@@ -99,7 +122,7 @@ const Dashboard = () => {
           id: `alert-${b.id}`,
           type: 'critical_fill',
           severity: 'high',
-          message: `Bin ${b.id} in ${b.ward} has reached ${b.fillLevel}% capacity requirement.`,
+          message: `Bin ${b.name || b.id} in ${b.ward} has reached ${b.fillLevel}% capacity requirement.`,
           timestamp: new Date().toISOString(),
           acknowledged: false
         }));
@@ -265,14 +288,57 @@ const Dashboard = () => {
           </div>
 
           <div className="map-container-wrapper">
-            <MapContainer center={[19.9975, 73.7898]} zoom={12} style={{ height: '420px', width: '100%', zIndex: 0 }}>
+            <MapContainer
+              center={kmlData?.depot ? [kmlData.depot.lat, kmlData.depot.lng] : [19.892379, 74.484606]}
+              zoom={14}
+              style={{ height: '420px', width: '100%', zIndex: 0 }}
+            >
               <TileLayer
-                attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
-                url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+                attribution="Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community"
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
               />
+
+              {/* Render KML Zone Polygons (Zone A & Zone B) */}
+              {kmlData?.zones?.map(zone => (
+                <Polygon
+                  key={zone.id || zone.name}
+                  positions={zone.coordinates}
+                  pathOptions={{
+                    color: zone.name.includes('ZONE A') ? '#2563eb' : '#16a34a',
+                    fillColor: zone.name.includes('ZONE A') ? '#2563eb' : '#16a34a',
+                    fillOpacity: 0.15,
+                    weight: 2
+                  }}
+                />
+              ))}
+
+              {/* Render Collection Route */}
+              {kmlData?.routes?.map(route => (
+                <Polyline
+                  key={route.id || route.name}
+                  positions={route.coordinates}
+                  pathOptions={{ color: '#f59e0b', weight: 4, opacity: 0.8 }}
+                />
+              ))}
+
+              {/* Render Central Depot Hub */}
+              {kmlData?.depot && (
+                <CircleMarker
+                  center={[kmlData.depot.lat, kmlData.depot.lng]}
+                  radius={12}
+                  pathOptions={{ fillColor: '#0f172a', color: '#ffffff', weight: 2, fillOpacity: 1 }}
+                >
+                  <Popup>
+                    <strong>🏢 Central Depot Hub (mapping3.kml)</strong><br />
+                    Coordinates: {kmlData.depot.lat.toFixed(4)}, {kmlData.depot.lng.toFixed(4)}
+                  </Popup>
+                </CircleMarker>
+              )}
+
+              {/* Render Bins */}
               {filteredBins.map(bin => (
                 <CircleMarker
-                  key={bin.id}
+                  key={bin.id || bin.name}
                   center={[bin.lat, bin.lng]}
                   radius={8}
                   fillColor={getBinColor(bin.fillLevel)}
@@ -282,11 +348,10 @@ const Dashboard = () => {
                 >
                   <Popup>
                     <div className="bin-popup" style={{ fontSize: '0.85rem' }}>
-                      <strong>Bin ID: {bin.id}</strong><br/>
-                      Ward: {bin.ward}<br/>
-                      Fill Level: <span style={{ fontWeight: 600, color: getBinColor(bin.fillLevel) }}>{bin.fillLevel}%</span><br/>
-                      Battery Health: {bin.batteryLevel}%<br/>
-                      Weight: {bin.currentWeightKg} kg
+                      <strong>Bin: {bin.name || bin.id}</strong><br/>
+                      Zone: {bin.ward}<br/>
+                      Status: <span style={{ fontWeight: 600, color: getBinColor(bin.fillLevel) }}>{bin.fillLevel > 50 ? 'Needs Pickup' : 'Collected'}</span><br/>
+                      Coordinates: {bin.lat.toFixed(5)}, {bin.lng.toFixed(5)}
                     </div>
                   </Popup>
                 </CircleMarker>
@@ -422,7 +487,48 @@ const Dashboard = () => {
             })}
           </div>
         </div>
+      </div>
 
+      {/* Row 5: Operational Process Flowchart Diagram */}
+      <div className="panel" style={{ background: '#fff', borderRadius: 8, padding: '1.25rem', marginTop: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Activity size={18} style={{ color: '#2563eb' }} /> Operational Dispatch &amp; Cost Flowchart Pipeline
+          </h3>
+          <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Source: mapping3.kml (Nashik Region)</span>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', alignItems: 'center' }}>
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderTop: '3px solid #2563eb', borderRadius: 8, padding: '12px', textAlign: 'center' }}>
+            <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: 4 }}>1. GPS GEOMETRY</span>
+            <strong style={{ fontSize: '0.85rem', color: '#0f172a' }}>mapping3.kml</strong>
+            <p style={{ fontSize: '0.72rem', color: '#64748b', margin: '4px 0 0' }}>1 Depot + 14 Smart Bins</p>
+          </div>
+          
+          <div style={{ textAlign: 'center', color: '#94a3b8', fontWeight: 900, fontSize: '1.2rem' }}>➔</div>
+
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderTop: '3px solid #7c3aed', borderRadius: 8, padding: '12px', textAlign: 'center' }}>
+            <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: 4 }}>2. ROUTE TOUR</span>
+            <strong style={{ fontSize: '0.85rem', color: '#0f172a' }}>Haversine Model</strong>
+            <p style={{ fontSize: '0.72rem', color: '#64748b', margin: '4px 0 0' }}>16.57 km Optimized Path</p>
+          </div>
+
+          <div style={{ textAlign: 'center', color: '#94a3b8', fontWeight: 900, fontSize: '1.2rem' }}>➔</div>
+
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderTop: '3px solid #f59e0b', borderRadius: 8, padding: '12px', textAlign: 'center' }}>
+            <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: 4 }}>3. FLEET ALLOCATION</span>
+            <strong style={{ fontSize: '0.85rem', color: '#0f172a' }}>1:1 Zone Dispatch</strong>
+            <p style={{ fontSize: '0.72rem', color: '#64748b', margin: '4px 0 0' }}>TRUCK-001 &amp; TRUCK-002</p>
+          </div>
+
+          <div style={{ textAlign: 'center', color: '#94a3b8', fontWeight: 900, fontSize: '1.2rem' }}>➔</div>
+
+          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderTop: '3px solid #16a34a', borderRadius: 8, padding: '12px', textAlign: 'center' }}>
+            <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#166534', display: 'block', marginBottom: 4 }}>4. DAILY COST OUTPUT</span>
+            <strong style={{ fontSize: '0.95rem', color: '#16a34a' }}>Rs. 4,850 / day</strong>
+            <p style={{ fontSize: '0.72rem', color: '#15803d', margin: '4px 0 0' }}>Fuel + Overheads</p>
+          </div>
+        </div>
       </div>
 
       {/* Footer Operational Summary Ticker */}
