@@ -40,6 +40,8 @@ export default function Grievances() {
   const [resolveTicketId, setResolveTicketId] = useState(null);
   const [resolvedImageFile, setResolvedImageFile] = useState(null);
   const [resolutionNotes, setResolutionNotes] = useState('');
+  const [isVerifyingTrashBot, setIsVerifyingTrashBot] = useState(false);
+  const [trashBotError, setTrashBotError] = useState('');
 
   useEffect(() => {
     loadGrievances();
@@ -155,6 +157,9 @@ export default function Grievances() {
     }
 
     try {
+      setIsVerifyingTrashBot(true);
+      setTrashBotError('');
+
       const formData = new FormData();
       formData.append('status', 'Resolved');
       formData.append('notes', resolutionNotes || 'Resolved by municipal admin dispatch team');
@@ -166,7 +171,9 @@ export default function Grievances() {
       await loadGrievances();
     } catch (error) {
       console.error('Error resolving grievance:', error);
-      alert(error.message || 'Failed to resolve grievance.');
+      setTrashBotError(error.message || 'Failed to resolve grievance.');
+    } finally {
+      setIsVerifyingTrashBot(false);
     }
   };
 
@@ -400,11 +407,17 @@ export default function Grievances() {
       {/* Resolve Proof Upload Modal */}
       {isResolveModalOpen && (
         <Modal
-          title="Upload Resolution Proof"
-          onClose={() => setIsResolveModalOpen(false)}
+          title="Upload Resolution Proof (TrashBot AI Verified)"
+          onClose={() => !isVerifyingTrashBot && setIsResolveModalOpen(false)}
         >
           <form onSubmit={handleConfirmResolve} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <p className="text-muted">An image of the cleaned site is mandatory before marking this ticket as resolved.</p>
+            <div style={{ background: '#f8fafc', padding: '0.75rem 1rem', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.825rem' }}>
+              <strong>🤖 TrashBot AI Waste Monitoring Model Integrated</strong>
+              <p style={{ margin: '0.25rem 0 0 0', color: '#64748b' }}>
+                Every resolution proof photo is automatically verified using the TrashBot Computer Vision AI model to confirm the site has been cleaned before closing the ticket.
+              </p>
+            </div>
+
             <div className="form-group">
               <label className="form-label">Cleaned Site Photo *</label>
               <input
@@ -412,7 +425,11 @@ export default function Grievances() {
                 accept="image/*"
                 className="form-input"
                 required
-                onChange={(e) => setResolvedImageFile(e.target.files[0])}
+                disabled={isVerifyingTrashBot}
+                onChange={(e) => {
+                  setResolvedImageFile(e.target.files[0]);
+                  setTrashBotError('');
+                }}
               />
             </div>
             <div className="form-group">
@@ -421,12 +438,28 @@ export default function Grievances() {
                 className="form-input"
                 placeholder="Optional comments on cleanup..."
                 value={resolutionNotes}
+                disabled={isVerifyingTrashBot}
                 onChange={(e) => setResolutionNotes(e.target.value)}
               />
             </div>
+
+            {trashBotError && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', padding: '0.75rem', borderRadius: 8, color: '#991b1b', fontSize: '0.85rem' }}>
+                {trashBotError}
+              </div>
+            )}
+
+            {isVerifyingTrashBot && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#0284c7', fontSize: '0.85rem', fontWeight: 600 }}>
+                <span>🤖 TrashBot AI model is evaluating site cleanliness & waste clearance...</span>
+              </div>
+            )}
+
             <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-              <button type="button" className="btn" onClick={() => setIsResolveModalOpen(false)}>Cancel</button>
-              <button type="submit" className="btn btn-success" disabled={!resolvedImageFile}>Submit &amp; Resolve</button>
+              <button type="button" className="btn" disabled={isVerifyingTrashBot} onClick={() => setIsResolveModalOpen(false)}>Cancel</button>
+              <button type="submit" className="btn btn-success" disabled={!resolvedImageFile || isVerifyingTrashBot}>
+                {isVerifyingTrashBot ? 'Running TrashBot AI...' : 'Submit & Resolve'}
+              </button>
             </div>
           </form>
         </Modal>
