@@ -15,23 +15,39 @@ L.Icon.Default.mergeOptions({
 
 const PALETTE_COLORS = ['#2563eb', '#16a34a', '#d97706', '#7c3aed', '#db2777', '#0891b2'];
 
-// Helper component to smoothly re-center map when bounds or fullscreen changes
+// Helper component — only fits bounds on first load and after explicit optimization, never during polling
 function MapRecenter({ bounds, isFullscreen }) {
   const map = useMap();
+  const hasFitRef = useRef(false);
+  const prevBoundsRef = useRef(null);
+  const prevFullscreenRef = useRef(isFullscreen);
+
+  // Only invalidate size when fullscreen actually changes
   useEffect(() => {
-    const timer = setTimeout(() => {
-      map.invalidateSize();
-    }, 150);
-    return () => clearTimeout(timer);
+    const fullscreenChanged = prevFullscreenRef.current !== isFullscreen;
+    prevFullscreenRef.current = isFullscreen;
+    if (fullscreenChanged) {
+      const timer = setTimeout(() => { map.invalidateSize(); }, 150);
+      return () => clearTimeout(timer);
+    }
   }, [isFullscreen, map]);
 
   useEffect(() => {
-    if (bounds) {
-      map.fitBounds([
-        [bounds.minLat, bounds.minLng],
-        [bounds.maxLat, bounds.maxLng]
-      ], { padding: [30, 30] });
-    }
+    if (!bounds) return;
+
+    // Detect if bounds actually changed (i.e., user ran optimization or first load)
+    const boundsKey = `${bounds.minLat},${bounds.maxLat},${bounds.minLng},${bounds.maxLng}`;
+    const prevKey = prevBoundsRef.current;
+    prevBoundsRef.current = boundsKey;
+
+    // Skip if bounds haven't changed since last fit (polling didn't change them)
+    if (hasFitRef.current && boundsKey === prevKey) return;
+
+    map.fitBounds([
+      [bounds.minLat, bounds.minLng],
+      [bounds.maxLat, bounds.maxLng]
+    ], { padding: [30, 30] });
+    hasFitRef.current = true;
   }, [bounds, map]);
 
   return null;
@@ -51,16 +67,17 @@ export default function RouteOptimizer() {
   const [selectedDriverId, setSelectedDriverId] = useState('ALL');
   const [activeMapFocusBounds, setActiveMapFocusBounds] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [routeViewMode, setRouteViewMode] = useState('ALL'); // 'BEFORE' (Old Route), 'AFTER' (New Route), 'ALL' (Both)
 
   const mapColumnRef = useRef(null);
 
   // Form State: Territory Assignment & Search
   const [targetDriverId, setTargetDriverId] = useState('');
   const [colonyName, setColonyName] = useState('');
-  const [minLat, setMinLat] = useState('19.9900');
-  const [maxLat, setMaxLat] = useState('20.0100');
-  const [minLng, setMinLng] = useState('73.7700');
-  const [maxLng, setMaxLng] = useState('73.7900');
+  const [minLat, setMinLat] = useState('19.8800');
+  const [maxLat, setMaxLat] = useState('19.9200');
+  const [minLng, setMinLng] = useState('74.4700');
+  const [maxLng, setMaxLng] = useState('74.5000');
 
   // Manual Override Form State
   const [reassignBinId, setReassignBinId] = useState('');
@@ -169,8 +186,8 @@ export default function RouteOptimizer() {
             const vId = String(v.id || v.vehicle_id);
             const dName = v.driver_name || v.driverName || `Driver (${vId})`;
             
-            const centerLat = parseFloat(v.latitude || v.min_lat || 19.9975);
-            const centerLng = parseFloat(v.longitude || v.min_lng || 73.7898);
+            const centerLat = parseFloat(v.latitude || v.min_lat || (kmlRes?.depot?.lat || 19.892379));
+            const centerLng = parseFloat(v.longitude || v.min_lng || (kmlRes?.depot?.lng || 74.484606));
 
             return {
               driverId: vId,
@@ -178,10 +195,10 @@ export default function RouteOptimizer() {
               zoneName: v.territory_name || v.ward || `Territory ${vId}`,
               color: PALETTE_COLORS[idx % PALETTE_COLORS.length],
               bounds: {
-                minLat: parseFloat(v.min_lat || (centerLat - 0.008).toFixed(4)),
-                maxLat: parseFloat(v.max_lat || (centerLat + 0.008).toFixed(4)),
-                minLng: parseFloat(v.min_lng || (centerLng - 0.008).toFixed(4)),
-                maxLng: parseFloat(v.max_lng || (centerLng + 0.008).toFixed(4)),
+                minLat: parseFloat(v.min_lat || (centerLat - 0.025).toFixed(4)),
+                maxLat: parseFloat(v.max_lat || (centerLat + 0.025).toFixed(4)),
+                minLng: parseFloat(v.min_lng || (centerLng - 0.025).toFixed(4)),
+                maxLng: parseFloat(v.max_lng || (centerLng + 0.025).toFixed(4)),
               }
             };
           });
@@ -302,12 +319,13 @@ export default function RouteOptimizer() {
     setStatusMsg('');
 
     try {
-      const depotLat = 19.9975;
-      const depotLng = 73.7898;
+      const depotLat = kmlData?.depot?.lat || 19.892379;
+      const depotLng = kmlData?.depot?.lng || 74.484606;
 
       const vehiclesPayload = driverTerritories.map((t) => ({
         vehicleId: t.driverId,
         driverName: t.driverName,
+        zoneName: t.zoneName,
         capacity: 1000,
         currentLoad: 0,
         minLat: t.bounds.minLat,
@@ -316,13 +334,46 @@ export default function RouteOptimizer() {
         maxLng: t.bounds.maxLng,
       }));
 
-      const result = await optimizeFleetRoutes(depotLat, depotLng, vehiclesPayload, generatedBins);
+      // Combine KML Bins and Database Bins
+      const kmlBinsFormatted = (kmlData?.bins || []).map((b) => ({
+        id: b.name || b.id,
+        latitude: parseFloat(b.lat),
+        longitude: parseFloat(b.lng),
+        fill_level: b.isCollected ? 0 : 85,
+        current_weight_kg: 250,
+        ward: b.zone || 'KML Zone'
+      }));
 
-      if (result && result.routes) {
+      // Ensure ONLY KML bins are optimized, to isolate territories perfectly
+      const binsToOptimize = [...kmlBinsFormatted];
+
+      const result = await optimizeFleetRoutes(depotLat, depotLng, vehiclesPayload, binsToOptimize);
+
+      if (result && result.routes && result.routes.length > 0) {
         setOptimizedRoutes(result.routes);
+        setRouteViewMode('AFTER'); // Automatically switch view mode to After Optimization!
         setStatusMsg(`Successfully optimized routes for ${result.routes.length} driver territories!`);
+
+        // Compute bounding box to auto-center map on new routes
+        let minL = 90, maxL = -90, minG = 180, maxG = -180;
+        result.routes.forEach(r => {
+          if (r.geometry && r.geometry.coordinates) {
+            r.geometry.coordinates.forEach(([lng, lat]) => {
+              if (lat < minL) minL = lat;
+              if (lat > maxL) maxL = lat;
+              if (lng < minG) minG = lng;
+              if (lng > maxG) maxG = lng;
+            });
+          }
+        });
+
+        if (minL < maxL && minG < maxG) {
+          setActiveMapFocusBounds({ minLat: minL - 0.005, maxLat: maxL + 0.005, minLng: minG - 0.005, maxLng: maxG + 0.005 });
+        }
       } else if (result && result.error) {
         setErrorMsg(result.error);
+      } else {
+        setErrorMsg('No routes generated. Please check driver territory bounds or bins.');
       }
     } catch (err) {
       console.error('Optimization error:', err);
@@ -367,8 +418,17 @@ export default function RouteOptimizer() {
         <div>
           <h1>Driver Territory &amp; Fleet Optimizer</h1>
           <p className="page-subheading">
-            Search places in Nashik, assign colony boundaries to drivers, view geofenced territories, and run OR-Tools route planning.
+            Assign territories to drivers, then click <strong>Optimize Fleet Routes</strong> to compute the shortest collection path per vehicle using <strong>Nearest Neighbour + 2-opt (CVRP)</strong>. Routes are geofenced to each driver's territory.
           </p>
+        </div>
+        {/* Algorithm Badge */}
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 8, padding: '0.5rem 1rem',
+          background: 'linear-gradient(135deg,#1e40af,#6d28d9)', borderRadius: 8,
+          color: '#fff', fontSize: '0.8rem', fontWeight: 700, boxShadow: '0 2px 8px rgba(37,99,235,0.4)'
+        }}>
+          <Navigation size={14} />
+          Algorithm: Nearest Neighbour + 2-opt · Territory-Geofenced CVRP
         </div>
       </div>
 
@@ -422,11 +482,75 @@ export default function RouteOptimizer() {
           className={`ro-map-col ${isFullscreen ? 'ro-fullscreen-mode' : ''}`}
         >
           <div className="panel ro-map-panel-box">
-            <div className="panel-header" style={{ marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="panel-header" style={{ marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
               <div>
-                <h3><MapPin size={16} style={{ marginRight: 6 }} /> Territory Geofences &amp; Dustbin Locations</h3>
-                <small className="text-muted">Depot: Nashik Central (19.9975, 73.7898)</small>
+                <h3><MapPin size={16} style={{ marginRight: 6 }} /> Territory Geofences &amp; Fleet Map</h3>
+                <small className="text-muted">Depot: Nashik Central ({kmlData?.depot?.lat || 19.89518}, {kmlData?.depot?.lng || 74.48668})</small>
               </div>
+
+              {/* Before vs After Optimization Route View Toggle */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: '#f1f5f9', padding: '3px 4px', borderRadius: 8, border: '1px solid #cbd5e1' }}>
+                <button
+                  type="button"
+                  onClick={() => setRouteViewMode('BEFORE')}
+                  title="Show original baseline KML path"
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    borderRadius: 6,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: routeViewMode === 'BEFORE' ? '#2563eb' : 'transparent',
+                    color: routeViewMode === 'BEFORE' ? '#ffffff' : '#475569',
+                    boxShadow: routeViewMode === 'BEFORE' ? '0 1px 4px rgba(37,99,235,0.3)' : 'none',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  📍 Before Optimization (Old Path)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setRouteViewMode('AFTER')}
+                  title="Show newly calculated NN + 2-opt shortest route"
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    borderRadius: 6,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: routeViewMode === 'AFTER' ? '#16a34a' : 'transparent',
+                    color: routeViewMode === 'AFTER' ? '#ffffff' : '#475569',
+                    boxShadow: routeViewMode === 'AFTER' ? '0 1px 4px rgba(22,163,74,0.3)' : 'none',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  ⚡ After Optimization (New Route)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setRouteViewMode('ALL')}
+                  title="Overlay both old and new routes on map"
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    borderRadius: 6,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: routeViewMode === 'ALL' ? '#0f172a' : 'transparent',
+                    color: routeViewMode === 'ALL' ? '#ffffff' : '#475569',
+                    boxShadow: routeViewMode === 'ALL' ? '0 1px 4px rgba(15,23,42,0.3)' : 'none',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  👁️ Show Both
+                </button>
+              </div>
+
               <button 
                 type="button" 
                 className="btn btn-secondary btn-sm" 
@@ -480,8 +604,8 @@ export default function RouteOptimizer() {
                     );
                   })}
 
-                  {/* KML 2. Official Marked Path Routes (ROUTE-TRUCK-001 & ROUTE-TRUCK-002) */}
-                  {kmlData?.routes?.map((route) => {
+                  {/* KML 2. Official Marked Path Routes (Before Optimization) */}
+                  {(routeViewMode === 'BEFORE' || routeViewMode === 'ALL') && kmlData?.routes?.map((route) => {
                     const isTruck1 = route.name.includes('TRUCK-001');
                     const isTruck2 = route.name.includes('TRUCK-002');
                     const color = isTruck1 ? '#2563eb' : isTruck2 ? '#9333ea' : '#d97706';
@@ -491,15 +615,15 @@ export default function RouteOptimizer() {
                         positions={route.coordinates}
                         pathOptions={{
                           color: color,
-                          weight: 4.5,
-                          opacity: 0.85,
-                          dashArray: route.name.includes('Google') ? '6,6' : null,
+                          weight: routeViewMode === 'ALL' ? 3.5 : 5,
+                          opacity: routeViewMode === 'ALL' ? 0.5 : 0.85,
+                          dashArray: routeViewMode === 'ALL' ? '6,6' : (route.name.includes('Google') ? '6,6' : null),
                         }}
                       >
                         <Popup>
                           <div>
-                            <strong>🗺️ {route.name}</strong><br />
-                            Marked Collection Route
+                            <strong>📍 Original Route (Before Optimization)</strong><br />
+                            Route: {route.name}
                           </div>
                         </Popup>
                       </Polyline>
@@ -561,23 +685,43 @@ export default function RouteOptimizer() {
 
                   {/* KML 4. Depot Location */}
                   {kmlData?.depot && (
-                    <CircleMarker
-                      center={[kmlData.depot.lat, kmlData.depot.lng]}
-                      radius={12}
-                      pathOptions={{
-                        color: '#ffffff',
-                        fillColor: '#0f172a',
-                        fillOpacity: 1,
-                        weight: 3,
-                      }}
-                    >
-                      <Popup>
-                        <div style={{ textAlign: 'center' }}>
-                          <strong>🏢 CENTRAL DEPOT</strong><br />
-                          <small>All vehicles return here after collection</small>
-                        </div>
-                      </Popup>
-                    </CircleMarker>
+                    <React.Fragment>
+                      <CircleMarker
+                        center={[kmlData.depot.lat, kmlData.depot.lng]}
+                        radius={12}
+                        pathOptions={{
+                          color: '#ffffff',
+                          fillColor: '#0f172a',
+                          fillOpacity: 1,
+                          weight: 3,
+                        }}
+                      >
+                        <Popup>
+                          <div style={{ textAlign: 'center' }}>
+                            <strong>🏢 CENTRAL DEPOT</strong><br />
+                            <small>Start location for all vehicles</small>
+                          </div>
+                        </Popup>
+                      </CircleMarker>
+
+                      <CircleMarker
+                        center={[kmlData.depot.lat + 0.015, kmlData.depot.lng + 0.025]}
+                        radius={12}
+                        pathOptions={{
+                          color: '#ffffff',
+                          fillColor: '#b91c1c', // red color for Dump Yard
+                          fillOpacity: 1,
+                          weight: 3,
+                        }}
+                      >
+                        <Popup>
+                          <div style={{ textAlign: 'center' }}>
+                            <strong>🏭 DUMP YARD</strong><br />
+                            <small>All vehicles return here after collection</small>
+                          </div>
+                        </Popup>
+                      </CircleMarker>
+                    </React.Fragment>
                   )}
 
                   {/* KML 5. Assigned Garbage Trucks on Map */}
@@ -632,38 +776,8 @@ export default function RouteOptimizer() {
                   })}
 
                   {/* 2. Fixed Database Dustbins */}
-                  {generatedBins.map((bin) => {
-                    if (selectedDriverId !== 'ALL' && String(selectedDriverId) !== String(bin.assignedDriverId || bin.driver_id)) return null;
-                    const territory = driverTerritories.find((t) => String(t.driverId) === String(bin.assignedDriverId || bin.driver_id));
-                    const color = territory ? territory.color : '#ef4444';
-
-                    const lat = parseFloat(bin.latitude || bin.lat);
-                    const lng = parseFloat(bin.longitude || bin.lng);
-                    if (isNaN(lat) || isNaN(lng)) return null;
-
-                    return (
-                      <CircleMarker
-                        key={bin.id}
-                        center={[lat, lng]}
-                        radius={6}
-                        pathOptions={{
-                          color: color,
-                          fillColor: '#ffffff',
-                          fillOpacity: 1,
-                          weight: 2.5,
-                        }}
-                      >
-                        <Popup>
-                          <div>
-                            <strong>{bin.id}</strong><br />
-                            Ward: {bin.ward || 'Nashik Central'}<br />
-                            Fill Level: {bin.fill_level || 0}%<br />
-                            Payload Weight: {bin.current_weight_kg || Math.floor((bin.fill_level || 0) * 3.5)} kg
-                          </div>
-                        </Popup>
-                      </CircleMarker>
-                    );
-                  })}
+                  {/* HIDDEN: As requested, only showing KML coordinates now */}
+                  {generatedBins.length > 0 && null}
 
                   {/* 3. Live Moving Vehicle Drivers from DB */}
                   {liveVehicles.map((vehicle) => {
@@ -698,19 +812,39 @@ export default function RouteOptimizer() {
                     );
                   })}
 
-                  {/* 4. Render Driving Routes */}
-                  {visibleRoutes.map((route, idx) => {
+                  {/* 4. Render New Optimized Driving Routes (After Optimization) */}
+                  {(routeViewMode === 'AFTER' || routeViewMode === 'ALL') && visibleRoutes.map((route, idx) => {
                     const polylineCoords = parsePolylineCoords(route.geometry);
                     const territory = driverTerritories.find((t) => String(t.driverId) === String(route.vehicleId));
-                    const color = territory ? territory.color : '#2563eb';
+                    const color = territory ? territory.color : PALETTE_COLORS[idx % PALETTE_COLORS.length];
 
                     return (
-                      <React.Fragment key={route.vehicleId || idx}>
+                      <React.Fragment key={`opt-route-${route.vehicleId || idx}`}>
                         {polylineCoords.length > 0 && (
-                          <Polyline
-                            positions={polylineCoords}
-                            pathOptions={{ color, weight: 4, opacity: 0.85 }}
-                          />
+                          <>
+                            {/* Dark glow background stroke */}
+                            <Polyline
+                              positions={polylineCoords}
+                              pathOptions={{ color: '#0f172a', weight: 8, opacity: 0.25 }}
+                            />
+                            {/* Primary bright polyline */}
+                            <Polyline
+                              positions={polylineCoords}
+                              pathOptions={{ color: color, weight: 5.5, opacity: 0.95 }}
+                            >
+                              <Popup>
+                                <div style={{ fontSize: '0.85rem' }}>
+                                  <strong style={{ color }}>⚡ New Shortest Optimized Route</strong><br />
+                                  <strong>Driver:</strong> {route.driver?.name}<br />
+                                  <strong>Plate:</strong> {route.driver?.licensePlate}<br />
+                                  <strong>Assigned Bins:</strong> {route.assignedBinCount} stops<br />
+                                  <strong>Distance:</strong> {route.totalDistanceKm} km<br />
+                                  <strong>Duration:</strong> {route.totalDurationMinutes} min<br />
+                                  <strong>Algorithm:</strong> {route.algorithm || 'Nearest Neighbour + 2-opt'}
+                                </div>
+                              </Popup>
+                            </Polyline>
+                          </>
                         )}
                       </React.Fragment>
                     );
@@ -1011,43 +1145,116 @@ export default function RouteOptimizer() {
             </form>
           </div>
 
+          {/* Algorithm Info Panel */}
+          <div className="panel" style={{
+            background: 'linear-gradient(135deg,#0f172a,#1e3a5f)',
+            borderRadius: 8, padding: '1rem',
+            boxShadow: '0 2px 12px rgba(37,99,235,0.25)',
+            color: '#e2e8f0'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '0.6rem' }}>
+              <Navigation size={16} style={{ color: '#60a5fa' }} />
+              <span style={{ fontWeight: 800, fontSize: '0.9rem', color: '#93c5fd' }}>Algorithm: Nearest Neighbour + 2-opt (CVRP)</span>
+            </div>
+            <div style={{ fontSize: '0.78rem', lineHeight: 1.65, color: '#cbd5e1' }}>
+              <p style={{ marginBottom: '0.4rem' }}>
+                <strong style={{ color: '#38bdf8' }}>Step 1 — Territory Filter:</strong> Each vehicle only sees bins strictly inside its bounding box.
+              </p>
+              <p style={{ marginBottom: '0.4rem' }}>
+                <strong style={{ color: '#38bdf8' }}>Step 2 — Nearest Neighbour:</strong> Start at the depot; always visit the closest unvisited bin next. Builds a complete tour in O(n²).
+              </p>
+              <p style={{ marginBottom: '0.4rem' }}>
+                <strong style={{ color: '#38bdf8' }}>Step 3 — 2-opt Improvement:</strong> Repeatedly reverses route segments to eliminate crossing paths until no shorter tour is found.
+              </p>
+              <p style={{ marginBottom: 0 }}>
+                <strong style={{ color: '#38bdf8' }}>Result:</strong> Typically within 5–15% of the mathematically optimal route, computed in milliseconds.
+              </p>
+            </div>
+          </div>
+
           {/* Route Summary */}
           <div className="panel ro-details-panel" style={{ background: '#fff', borderRadius: 8, padding: '1rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <div className="panel-header" style={{ marginBottom: '0.5rem' }}>
-              <h3><Info size={14} style={{ marginRight: 6 }} /> Route Summary</h3>
+            <div className="panel-header" style={{ marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0 }}><Info size={14} style={{ marginRight: 6 }} /> Optimized Route Summary</h3>
+              {optimizedRoutes.length > 0 && (
+                <span className="badge badge-success" style={{ fontSize: '0.72rem' }}>
+                  {optimizedRoutes.length} route{optimizedRoutes.length !== 1 ? 's' : ''} computed
+                </span>
+              )}
             </div>
             <div className="panel-body">
               {optimizedRoutes.length === 0 ? (
-                <p className="text-muted" style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.85rem' }}>
-                  Click <strong>"Optimize Fleet Routes"</strong> to generate driving routes.
-                </p>
+                <div style={{ textAlign: 'center', padding: '1.5rem 0.5rem' }}>
+                  <Navigation size={28} style={{ color: '#94a3b8', marginBottom: 8 }} />
+                  <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: 4 }}>
+                    Click <strong>"Optimize Fleet Routes"</strong> to compute shortest paths.
+                  </p>
+                  <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                    Routes will appear on the map as colored lines and are automatically sent to each driver's dashboard.
+                  </p>
+                </div>
               ) : selectedDriverId === 'ALL' ? (
-                <table className="data-table" style={{ width: '100%', fontSize: '0.85rem' }}>
-                  <thead>
-                    <tr>
-                      <th>Driver</th>
-                      <th>Bins</th>
-                      <th>Dist</th>
-                      <th>Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {optimizedRoutes.map((r) => (
-                      <tr key={r.vehicleId}>
-                        <td style={{ fontWeight: 600 }}>{r.driver?.name || r.vehicleId}</td>
-                        <td>{r.assignedBinCount}</td>
-                        <td>{r.totalDistanceKm} km</td>
-                        <td>{r.totalDurationMinutes} min</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  {optimizedRoutes.map((r, idx) => {
+                    const territory = driverTerritories.find(t => String(t.driverId) === String(r.vehicleId));
+                    const color = territory?.color || PALETTE_COLORS[idx % PALETTE_COLORS.length];
+                    const loadPct = Math.round((r.driver?.assignedLoadKg / r.driver?.maxCapacityKg) * 100) || 0;
+                    return (
+                      <div key={r.vehicleId} style={{
+                        border: `2px solid ${color}`,
+                        borderRadius: 8, padding: '0.75rem',
+                        background: `${color}08`,
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <span style={{ fontWeight: 700, fontSize: '0.85rem', color }}>
+                            🚛 {r.driver?.name || r.vehicleId}
+                          </span>
+                          <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{r.driver?.licensePlate}</span>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.4rem', fontSize: '0.78rem', marginBottom: 6 }}>
+                          <div style={{ textAlign: 'center', background: '#f1f5f9', borderRadius: 4, padding: '0.3rem' }}>
+                            <div style={{ fontWeight: 800, color: '#1e293b' }}>{r.assignedBinCount}</div>
+                            <div style={{ color: '#64748b' }}>Bins</div>
+                          </div>
+                          <div style={{ textAlign: 'center', background: '#f1f5f9', borderRadius: 4, padding: '0.3rem' }}>
+                            <div style={{ fontWeight: 800, color: '#1e293b' }}>{r.totalDistanceKm} km</div>
+                            <div style={{ color: '#64748b' }}>Distance</div>
+                          </div>
+                          <div style={{ textAlign: 'center', background: '#f1f5f9', borderRadius: 4, padding: '0.3rem' }}>
+                            <div style={{ fontWeight: 800, color: '#1e293b' }}>{r.totalDurationMinutes} min</div>
+                            <div style={{ color: '#64748b' }}>ETA</div>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#475569', marginBottom: 4 }}>Payload: {r.driver?.assignedLoadKg} / {r.driver?.maxCapacityKg} kg</div>
+                        <div style={{ height: 4, background: '#e2e8f0', borderRadius: 4, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${Math.min(100, loadPct)}%`, background: loadPct > 80 ? '#ef4444' : color, borderRadius: 4 }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               ) : selectedRoute ? (
-                <div className="ro-driver-detail" style={{ fontSize: '0.85rem' }}>
-                  <div className="ro-detail-kv"><span>Driver</span><strong>{selectedRoute.driver?.name}</strong></div>
-                  <div className="ro-detail-kv"><span>Distance</span><strong>{selectedRoute.totalDistanceKm} km</strong></div>
-                  <div className="ro-detail-kv"><span>Duration</span><strong>{selectedRoute.totalDurationMinutes} mins</strong></div>
-                  <div className="ro-detail-kv"><span>Payload</span><strong>{selectedRoute.driver?.assignedLoadKg} kg</strong></div>
+                <div>
+                  <div className="ro-driver-detail" style={{ fontSize: '0.85rem', marginBottom: '1rem' }}>
+                    <div className="ro-detail-kv"><span>Driver</span><strong>{selectedRoute.driver?.name}</strong></div>
+                    <div className="ro-detail-kv"><span>Plate</span><strong>{selectedRoute.driver?.licensePlate}</strong></div>
+                    <div className="ro-detail-kv"><span>Bins to Visit</span><strong>{selectedRoute.assignedBinCount}</strong></div>
+                    <div className="ro-detail-kv"><span>Total Distance</span><strong>{selectedRoute.totalDistanceKm} km</strong></div>
+                    <div className="ro-detail-kv"><span>Estimated Time</span><strong>{selectedRoute.totalDurationMinutes} mins</strong></div>
+                    <div className="ro-detail-kv"><span>Payload Load</span><strong>{selectedRoute.driver?.assignedLoadKg} kg</strong></div>
+                    <div className="ro-detail-kv"><span>Algorithm</span><strong style={{ color: '#2563eb', fontSize: '0.78rem' }}>{selectedRoute.algorithm}</strong></div>
+                  </div>
+                  {/* Ordered stop list */}
+                  <div style={{ fontSize: '0.78rem', color: '#475569' }}>
+                    <div style={{ fontWeight: 700, marginBottom: 6, color: '#1e293b' }}>📍 Optimized Stop Order:</div>
+                    <ol style={{ paddingLeft: '1.2rem', lineHeight: 1.9 }}>
+                      <li><strong>🏭 DEPOT</strong> (Start)</li>
+                      {(selectedRoute.assignedBins || []).map((b, i) => (
+                        <li key={b.id}>{b.id} — Fill: {b.fill_level || 0}% ({b.current_weight_kg || 250} kg)</li>
+                      ))}
+                      <li><strong>🏭 DEPOT</strong> (Return)</li>
+                    </ol>
+                  </div>
                 </div>
               ) : null}
             </div>
