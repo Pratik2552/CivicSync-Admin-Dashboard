@@ -474,7 +474,7 @@ export default function RouteOptimizer() {
       </div>
 
       {/* Main 2-column layout */}
-      <div className="ro-body" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem', marginTop: '1rem' }}>
+      <div className="ro-body">
         
         {/* LEFT: Map Panel with Fullscreen Wrapper */}
         <div 

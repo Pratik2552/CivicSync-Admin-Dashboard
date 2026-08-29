@@ -169,15 +169,49 @@
   }
   
   .login-left-panel {
-    padding: 3rem 2rem;
-    min-height: 40vh;
+    padding: var(--space-4) var(--space-3);
+    min-height: auto;
+    text-align: center;
+    align-items: center;
   }
   
+  .login-branding {
+    margin-bottom: var(--space-3);
+  }
+
   .login-title {
-    font-size: 2.5rem;
+    font-size: 2rem;
+  }
+
+  .login-subtitle {
+    font-size: 1.1rem;
+  }
+
+  .login-features {
+    display: none; /* Hide feature list on mobile to save space */
   }
   
   .login-right-panel {
-    padding: 3rem 2rem;
+    padding: var(--space-4) var(--space-3);
+    background-color: var(--color-bg);
+  }
+
+  .login-form-wrapper {
+    background-color: #fff;
+    padding: var(--space-4);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--color-border);
+  }
+
+  .login-heading {
+    font-size: 1.5rem;
+    margin-bottom: var(--space-4);
+    text-align: center;
+  }
+
+  .login-security-notice {
+    margin-top: var(--space-4);
+    padding-top: var(--space-3);
   }
 }
