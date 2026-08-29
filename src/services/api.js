@@ -8,8 +8,8 @@ const API_BASE_URL =
 async function request(endpoint, options = {}) {
   const token = localStorage.getItem('civicsync_admin_token');
 
-  // Log token status for debugging
-  if (!token) {
+  // Log token status for debugging when accessing protected endpoints
+  if (!token && !endpoint.startsWith('/auth/')) {
     console.warn('⚠️ No admin token found in localStorage. User may need to log in.');
   }
 
