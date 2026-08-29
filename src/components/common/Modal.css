@@ -35,4 +35,20 @@
 
 .modal-body {
   padding: var(--space-5);
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+  .modal-overlay {
+    padding: var(--space-2);
+  }
+
+  .modal-box {
+    max-width: calc(100vw - 16px) !important;
+  }
+
+  .modal-body {
+    padding: var(--space-3);
+  }
 }

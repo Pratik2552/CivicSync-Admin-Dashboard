@@ -382,6 +382,21 @@ h4 { font-size: 13px; font-weight: 600; color: var(--color-text); }
   flex-wrap: wrap;
 }
 
+/* ── KPI & Stats Grids ── */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
 /* ── Utilities ── */
 .text-muted   { color: var(--color-text-secondary); }
 .text-danger  { color: var(--color-danger); }
@@ -389,17 +404,23 @@ h4 { font-size: 13px; font-weight: 600; color: var(--color-text); }
 .text-warning { color: var(--color-warning-mid); }
 .text-mono    { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
+.mt-2  { margin-top: var(--space-2); }
+.mb-2  { margin-bottom: var(--space-2); }
 .mt-4  { margin-top: var(--space-4); }
 .mb-4  { margin-bottom: var(--space-4); }
 .mt-6  { margin-top: var(--space-6); }
 .mb-6  { margin-bottom: var(--space-6); }
+.gap-2 { gap: var(--space-2); }
+.gap-3 { gap: var(--space-3); }
 .gap-4 { gap: var(--space-4); }
 
 .flex         { display: flex; }
 .flex-col     { flex-direction: column; }
+.flex-wrap    { flex-wrap: wrap; }
 .items-center { align-items: center; }
 .justify-between { justify-content: space-between; }
 .flex-1       { flex: 1; }
+.w-full       { width: 100%; }
 
 .divider {
   height: 1px;
@@ -407,9 +428,154 @@ h4 { font-size: 13px; font-weight: 600; color: var(--color-text); }
   margin: var(--space-4) 0;
 }
 
-/* ── Responsive ── */
+/* ── Leaflet Global Mobile Overrides ── */
+.leaflet-container {
+  font-family: var(--font) !important;
+  z-index: 10 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.map-container {
+  height: 400px;
+  width: 100%;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.leaflet-pane {
+  z-index: 10 !important;
+}
+
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 20 !important;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;
+  max-width: 85vw !important;
+  font-family: var(--font) !important;
+}
+
+.leaflet-popup-content {
+  margin: 10px 14px !important;
+  line-height: 1.4 !important;
+  font-size: 12px !important;
+  max-width: 80vw !important;
+  word-break: break-word !important;
+}
+
+/* ── Global Responsive Enhancements ── */
+@media (max-width: 1024px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
 @media (max-width: 768px) {
   :root {
     --sidebar-width: 0px;
+    --space-6: 16px;
+    --space-5: 14px;
+    --space-4: 12px;
+  }
+
+  html, body {
+    font-size: 13.5px;
+    overflow-x: hidden;
+  }
+
+  /* Page headers stack naturally on mobile */
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+  }
+
+  .page-header h1 {
+    font-size: 1.25rem;
+  }
+
+  /* Search and filters take full available width */
+  .search-bar {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .filters-row {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+
+  .filters-row > * {
+    width: 100%;
+  }
+
+  /* KPI Grid single column / 2-col on small phones */
+  .kpi-grid {
+    grid-template-columns: 1fr !important;
+    gap: var(--space-3);
+  }
+
+  /* Panels padding */
+  .panel-body {
+    padding: var(--space-3);
+  }
+
+  .panel-header {
+    padding: var(--space-3);
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  /* Buttons on mobile */
+  .btn-lg {
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+
+  /* Form controls touch sizing */
+  .form-input,
+  .form-select,
+  .form-textarea {
+    font-size: 14px;
+    padding: 10px 12px;
+  }
+
+  .map-container {
+    height: 300px !important;
+  }
+
+  /* Table horizontal scroll wrapper with touch support */
+  .data-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    max-width: 100%;
+    margin-bottom: var(--space-3);
+  }
+
+  .data-table {
+    min-width: 580px; /* Ensures table columns don't get crushed and can be scrolled */
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 8px 10px;
+    font-size: 12px;
+    white-space: nowrap;
   }
 }
+
+@media (max-width: 480px) {
+  .btn {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+}
+

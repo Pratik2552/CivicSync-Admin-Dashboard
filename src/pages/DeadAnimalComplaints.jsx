@@ -161,7 +161,7 @@ export default function DeadAnimalComplaints() {
       )}
 
       {/* KPI Stats Grid */}
-      <div className="kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+      <div className="kpi-grid">
         <StatCard
           label="Total Dead Animal Alerts"
           value={stats.total}

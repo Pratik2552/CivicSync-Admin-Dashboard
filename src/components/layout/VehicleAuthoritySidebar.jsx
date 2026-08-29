@@ -4,11 +4,9 @@ import {
   Truck,
   User,
   LogOut,
-  Settings
+  X
 } from 'lucide-react';
 import './Sidebar.css';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 const NAV_ITEMS = [
   { to: '/vehicle-authority/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -16,7 +14,7 @@ const NAV_ITEMS = [
   { to: '/vehicle-authority/profile',   icon: User,             label: 'Profile' },
 ];
 
-export default function VehicleAuthoritySidebar() {
+export default function VehicleAuthoritySidebar({ isOpen, onClose }) {
   const navigate = useNavigate();
   
   // Get user from localStorage
@@ -34,15 +32,22 @@ export default function VehicleAuthoritySidebar() {
   function handleLogout() {
     localStorage.removeItem('civicsync_authority_token');
     localStorage.removeItem('civicsync_authority_user');
+    if (onClose) onClose();
     navigate('/vehicle-authority/login');
   }
+
+  const handleLinkClick = () => {
+    if (onClose) {
+      onClose();
+    }
+  };
 
   const displayName = user?.full_name || user?.name || user?.email || 'Authority User';
   const avatarChar = displayName.charAt(0).toUpperCase();
   const displayRole = 'Vehicle Authority';
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${isOpen ? 'mobile-open' : ''}`}>
       {/* Brand */}
       <div className="sidebar-brand">
         <div className="sidebar-logo">
@@ -52,6 +57,11 @@ export default function VehicleAuthoritySidebar() {
           <span className="sidebar-brand-name">CivicSync</span>
           <span className="sidebar-brand-sub">Vehicle Authority</span>
         </div>
+        {onClose && (
+          <button className="sidebar-close-btn" onClick={onClose} aria-label="Close menu">
+            <X size={20} />
+          </button>
+        )}
       </div>
 
       {/* Nav */}
@@ -61,6 +71,7 @@ export default function VehicleAuthoritySidebar() {
           <NavLink
             key={to}
             to={to}
+            onClick={handleLinkClick}
             className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
           >
             <Icon size={17} className="sidebar-icon" />

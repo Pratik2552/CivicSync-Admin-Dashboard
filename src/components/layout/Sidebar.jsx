@@ -11,7 +11,8 @@ import {
   Car,
   Users,
   ShieldAlert,
-  BarChart2
+  BarChart2,
+  X
 } from 'lucide-react'
 import { logout, getAuthUser } from '../../services/api.js'
 import './Sidebar.css'
@@ -29,13 +30,20 @@ const NAV_ITEMS = [
   { to: '/admin/live-users',             icon: Users,                label: 'Live Users' },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ isOpen, onClose }) {
   const navigate = useNavigate()
   const user = getAuthUser()
 
   function handleLogout() {
     logout()
+    if (onClose) onClose()
     navigate('/login')
+  }
+
+  const handleLinkClick = () => {
+    if (onClose) {
+      onClose()
+    }
   }
 
   // Fallback string evaluation for full_name or name
@@ -44,7 +52,7 @@ export default function Sidebar() {
   const displayRole = user?.role || 'Administrator'
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${isOpen ? 'mobile-open' : ''}`}>
       {/* Brand */}
       <div className="sidebar-brand">
         <div className="sidebar-logo">
@@ -54,6 +62,11 @@ export default function Sidebar() {
           <span className="sidebar-brand-name">CivicSync</span>
           <span className="sidebar-brand-sub">Municipal Admin</span>
         </div>
+        {onClose && (
+          <button className="sidebar-close-btn" onClick={onClose} aria-label="Close menu">
+            <X size={20} />
+          </button>
+        )}
       </div>
 
       {/* Nav */}
@@ -63,6 +76,7 @@ export default function Sidebar() {
           <NavLink
             key={to}
             to={to}
+            onClick={handleLinkClick}
             className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
           >
             <Icon size={17} className="sidebar-icon" />

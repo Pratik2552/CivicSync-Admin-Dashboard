@@ -1,20 +1,131 @@
 .admin-shell {
   display: flex;
   height: 100vh;
+  width: 100vw;
   overflow: hidden;
   background: var(--color-bg);
+  position: relative;
 }
 
+/* ── Mobile Top Navigation Bar (Hidden on desktop) ── */
+.mobile-header {
+  display: none;
+  height: 56px;
+  background: var(--color-primary-dark);
+  color: #fff;
+  align-items: center;
+  padding: 0 14px;
+  gap: 12px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 1100;
+}
+
+.mobile-menu-btn {
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-menu-btn:hover,
+.mobile-menu-btn:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.mobile-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.mobile-brand-icon {
+  width: 32px;
+  height: 32px;
+  background: var(--color-primary-light);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.mobile-brand-title {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mobile-brand-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.2;
+}
+
+.mobile-page-name {
+  font-size: 11px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Backdrop Overlay ── */
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(2px);
+  z-index: 1500;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── Main Content Area ── */
 .admin-main {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
+  height: 100vh;
 }
 
 .admin-content {
   flex: 1;
   overflow-y: auto;
   padding: var(--space-6);
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Mobile Layout Adjustments ── */
+@media (max-width: 768px) {
+  .admin-shell {
+    flex-direction: column;
+  }
+
+  .mobile-header {
+    display: flex;
+  }
+
+  .admin-main {
+    height: calc(100vh - 56px);
+  }
+
+  .admin-content {
+    padding: var(--space-3);
+  }
 }

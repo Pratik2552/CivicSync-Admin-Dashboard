@@ -399,7 +399,7 @@ const Dashboard = () => {
       </div>
 
       {/* Row 4: Live Fleet Table & 3-2-1 Podium Leaderboard Widget */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem', marginTop: '1.5rem' }}>
+      <div className="dashboard-bottom-grid">
         
         {/* Active Fleet Telemetry Table */}
         <div className="panel" style={{ background: '#fff', borderRadius: 8, padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>

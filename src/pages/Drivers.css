@@ -92,3 +92,32 @@ th.sortable:hover { color: var(--color-text); }
 
 /* ── Section spacing ── */
 .mb-6 { margin-bottom: var(--space-6); }
+
+/* ── Mobile Responsive ── */
+@media (max-width: 768px) {
+  .drv-page {
+    padding: var(--space-3);
+  }
+
+  .drv-kpis {
+    width: 100%;
+  }
+
+  .drv-bottom-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .form-2col {
+    grid-template-columns: 1fr;
+  }
+
+  .drv-actions {
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .load-bar-wrap {
+    min-width: 100px;
+  }
+}
