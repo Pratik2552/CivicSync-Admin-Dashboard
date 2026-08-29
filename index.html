@@ -24,6 +24,18 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Clear any legacy / broken Service Workers and stale caches that break module MIME types
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (var registration of registrations) {
+            registration.unregister();
+          }
+        }).catch(function(err) {
+          console.warn('Service worker unregister attempt:', err);
+        });
+      }
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
