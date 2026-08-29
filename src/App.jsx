@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import AdminLayout from './components/layout/AdminLayout.jsx'
 import VehicleAuthorityLayout from './components/layout/VehicleAuthorityLayout.jsx'
 import Login from './pages/Login.jsx'
@@ -29,7 +29,7 @@ function ProtectedAuthorityRoute({ children }) {
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <Router>
       <Routes>
         {/* Admin Routes */}
         <Route path="/login" element={<Login />} />
@@ -73,6 +73,6 @@ export default function App() {
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
-    </BrowserRouter>
+    </Router>
   )
 }
