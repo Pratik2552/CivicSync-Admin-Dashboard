@@ -16,7 +16,7 @@ import './OperationalCostAnalysis.css';
 // CONSTANTS & HELPERS
 // =============================================
 
-// Realistic Commercial Heavy Compactor Fuel & Mileage (Nashik 2026 local market)
+// Maharashtra reference operational fuel/energy assumptions
 const FUEL_RATES = {
   diesel:  { pricePerLitre: 89.62,   mileageKmPerL: 4.5,   label: 'Diesel (Heavy Compactor)',   unit: 'L',   color: '#f59e0b' },
   petrol:  { pricePerLitre: 97.76,   mileageKmPerL: 6.0,   label: 'Petrol (Light Tipper)',      unit: 'L',   color: '#ef4444' },
@@ -26,11 +26,11 @@ const FUEL_RATES = {
 
 // Itemized Vehicle Maintenance & Overheads (Maharashtra Commercial Vehicle Standards)
 const OPS_OVERHEADS = {
-  // Real Wages per Maharashtra Minimum Wages Act (Skilled Driver + Semi-skilled Helper)
+  // Reference daily wage assumptions for operational estimation
   driverWagePerDay:       850,   // ₹/day
   helperWagePerDay:       550,   // ₹/day (1 helper per truck)
   
-  // Real Itemized Vehicle Maintenance Breakdown
+  // Reference itemized vehicle maintenance assumptions
   maintTyresPerKm:        1.20,  // ₹/km (6 commercial tyres @ ₹12,000 replaced every 35,000 km)
   maintEnginePerKm:       0.85,  // ₹/km (Engine oil, fuel filter & air filter every 10,000 km)
   maintHydraulicsPerKm:   1.10,  // ₹/km (Hydraulic fluid, arm seals, cylinder servicing)
@@ -75,10 +75,87 @@ function computeZoneDistance(depot, bins) {
   return totalDist;
 }
 
+function computePathDistance(points) {
+  if (!Array.isArray(points) || points.length < 2) return 0;
+  return points.slice(1).reduce((total, point, index) => {
+    const previous = points[index];
+    return total + haversineKm(previous[0], previous[1], point[0], point[1]);
+  }, 0);
+}
+
+function findBaselineRouteDistance(routes, zoneName, truckName, allBins) {
+  const route = (routes || []).find(item => {
+    const routeName = String(item.name || '').toUpperCase();
+    const routeZone = String(item.zone || '').toUpperCase();
+    return routeZone === zoneName || routeName.includes(zoneName) || routeName.includes(truckName);
+  });
+  if (route?.coordinates?.length > 1) {
+    const distance = computePathDistance(route.coordinates);
+    return distance > 0 ? distance : null;
+  }
+
+  // If KML contains one complete route marked ALL, assign each segment to the
+  // zone of the nearest bin across ALL zones. This prevents the same complete
+  // route from being counted once for Zone A and again for Zone B.
+  const completeRoute = (routes || []).find(item => String(item.zone || '').toUpperCase() === 'ALL' && item.coordinates?.length > 1);
+  if (!completeRoute || !(allBins || []).length) return null;
+
+  const routeCoordinates = completeRoute.coordinates;
+  const zoneDistance = routeCoordinates.slice(1).reduce((total, point, index) => {
+    const previous = routeCoordinates[index];
+    const midpoint = [(previous[0] + point[0]) / 2, (previous[1] + point[1]) / 2];
+    const nearestBin = (allBins || []).reduce((nearest, bin) => {
+      const distance = haversineKm(midpoint[0], midpoint[1], bin.lat, bin.lng);
+      return distance < nearest.distance ? { distance, bin } : nearest;
+    }, { distance: Infinity, bin: null });
+
+    if (nearestBin.bin?.zone !== zoneName) return total;
+    return total + haversineKm(previous[0], previous[1], point[0], point[1]);
+  }, 0);
+
+  return zoneDistance > 0 ? zoneDistance : null;
+}
+
+function normalizeFuelType(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw.includes('electric') || raw === 'ev') return 'ev';
+  if (raw.includes('cng')) return 'cng';
+  if (raw.includes('petrol') || raw.includes('gasoline')) return 'petrol';
+  if (raw.includes('diesel')) return 'diesel';
+  return null;
+}
+
+function getVehicleFuelType(vehicle) {
+  return normalizeFuelType(vehicle?.fuel_type || vehicle?.fuelType || vehicle?.fuel || vehicle?.energy_type || vehicle?.energyType);
+}
+
+function getVehicleMileage(vehicle) {
+  return Number(vehicle?.mileageKmPerL || vehicle?.mileage || vehicle?.fuel_efficiency || vehicle?.fuelEfficiency) || null;
+}
+
+function resolveVehicleForTruck(dbVehicles, truck) {
+  if (!truck || !Array.isArray(dbVehicles)) return null;
+  const candidates = [truck.id, truck.vehicle_id, truck.vehicleId, truck.name, truck.vehicle_number, truck.vehicleNumber]
+    .filter(value => value !== null && value !== undefined)
+    .map(value => String(value).trim().toLowerCase());
+
+  return dbVehicles.find(vehicle => {
+    const vehicleKeys = [vehicle.id, vehicle.vehicle_id, vehicle.vehicleId, vehicle.name, vehicle.vehicle_number, vehicle.vehicleNumber, vehicle.registration_number, vehicle.registrationNumber]
+      .filter(value => value !== null && value !== undefined)
+      .map(value => String(value).trim().toLowerCase());
+    return candidates.some(candidate => vehicleKeys.includes(candidate));
+  }) || null;
+}
+
 // Full cost calculation for one vehicle/zone
-function calcCost(distKm, fuelType, bins) {
+function calcCost(distKm, fuelType, bins, vehicle = null) {
   const fuel = FUEL_RATES[fuelType];
-  const fuelConsumed = distKm / fuel.mileageKmPerL;
+  const backendFuelType = getVehicleFuelType(vehicle);
+  const backendMileage = getVehicleMileage(vehicle);
+  const canUseBackendMileage = Boolean(backendMileage && backendFuelType === fuelType);
+  const mileage = canUseBackendMileage ? backendMileage : fuel.mileageKmPerL;
+  const mileageSource = canUseBackendMileage ? 'backend' : 'reference';
+  const fuelConsumed = distKm / mileage;
   const fuelCost = fuelConsumed * fuel.pricePerLitre;
   
   const driverWage = OPS_OVERHEADS.driverWagePerDay;
@@ -127,12 +204,89 @@ function calcCost(distKm, fuelType, bins) {
     cost6Months: parseFloat(cost6Months.toFixed(2)),
     binsCount: bins?.length || 0,
     costPerBin: parseFloat((dailyTotal / (bins?.length || 1)).toFixed(2)),
-    costPerKm: parseFloat((dailyTotal / distKm).toFixed(2)),
+    costPerKm: distKm > 0 ? parseFloat((dailyTotal / distKm).toFixed(2)) : 0,
+    mileageKmPerL: mileage,
+    mileageSource,
+    backendFuelType,
+    fuelType,
     fuelLabel: fuel.label,
     fuelUnit: fuel.unit,
     fuelColor: fuel.color,
   };
 }
+
+function calculateRouteComparison(baselineDistance, optimizedDistance, fuelType, bins, vehicle) {
+  if (!baselineDistance || optimizedDistance === null || optimizedDistance === undefined) return null;
+  const baseline = calcCost(baselineDistance, fuelType, bins, vehicle);
+  const optimized = calcCost(optimizedDistance, fuelType, bins, vehicle);
+  const monthlyBaseline = baseline.cost1Month;
+  const monthlyOptimized = optimized.cost1Month;
+  const monthlySavings = monthlyBaseline - monthlyOptimized;
+
+  return {
+    baseline,
+    optimized,
+    monthlyBaseline,
+    monthlyOptimized,
+    monthlySavings,
+    savingsPercentage: monthlyBaseline > 0 ? (monthlySavings / monthlyBaseline) * 100 : 0,
+    distanceSaved: baselineDistance - optimizedDistance,
+    distanceReductionPercentage: baselineDistance > 0 ? ((baselineDistance - optimizedDistance) / baselineDistance) * 100 : 0,
+    fuelSaved: baseline.fuelConsumed - optimized.fuelConsumed,
+    fuelCostSaved: baseline.fuelCost - optimized.fuelCost,
+  };
+}
+
+function calculateFleetComparison(costA, costB) {
+  const comparisons = [costA?.comparison, costB?.comparison].filter(Boolean);
+  if (comparisons.length !== 2) return null;
+
+  const baseline = comparisons.map(item => item.baseline);
+  const optimized = comparisons.map(item => item.optimized);
+  const sum = (items, key) => items.reduce((total, item) => total + (Number(item[key]) || 0), 0);
+  const monthlyBaseline = sum(baseline, 'cost1Month');
+  const monthlyOptimized = sum(optimized, 'cost1Month');
+  const monthlySavings = monthlyBaseline - monthlyOptimized;
+
+  const energyByType = {};
+  comparisons.forEach((comparison, index) => {
+    const optimizedCost = optimized[index];
+    const fuelType = optimizedCost.fuelType;
+    const unit = optimizedCost.fuelUnit;
+    if (!energyByType[fuelType]) {
+      energyByType[fuelType] = {
+        fuelType,
+        label: optimizedCost.fuelLabel,
+        unit,
+        baseline: 0,
+        optimized: 0,
+        saved: 0,
+      };
+    }
+    energyByType[fuelType].baseline += Number(comparison.baseline.fuelConsumed) || 0;
+    energyByType[fuelType].optimized += Number(comparison.optimized.fuelConsumed) || 0;
+    energyByType[fuelType].saved += Number(comparison.fuelSaved) || 0;
+  });
+
+  return {
+    baselineDistance: sum(baseline, 'distKm'),
+    optimizedDistance: sum(optimized, 'distKm'),
+    distanceSaved: sum(baseline, 'distKm') - sum(optimized, 'distKm'),
+    distanceReductionPercentage: sum(baseline, 'distKm') > 0 ? ((sum(baseline, 'distKm') - sum(optimized, 'distKm')) / sum(baseline, 'distKm')) * 100 : 0,
+    monthlyBaseline,
+    monthlyOptimized,
+    monthlySavings,
+    savingsPercentage: monthlyBaseline > 0 ? (monthlySavings / monthlyBaseline) * 100 : 0,
+    monthlyFuelCostSavings: (sum(baseline, 'fuelCost') - sum(optimized, 'fuelCost')) * 26,
+    energyByType: Object.values(energyByType),
+    components: ['fuelCost', 'totalMaint', 'driverWage', 'helperWage', 'insurance', 'washing'].map(key => ({
+      key,
+      baseline: sum(baseline, key) * 26,
+      optimized: sum(optimized, key) * 26,
+    })),
+  };
+}
+
 
 const PIE_PALETTE = ['#2563eb', '#f59e0b', '#ef4444', '#22c55e', '#7c3aed', '#06b6d4'];
 const INR = n => `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
@@ -159,7 +313,7 @@ function OperationalWorkflowFlowchart({ costA, costB, zoneA, zoneB }) {
           <MapPin size={22} className="oca-fc-icon" />
           <div className="oca-fc-title">GPS Geometry</div>
           <div className="oca-fc-sub">mapping3.kml</div>
-          <div className="oca-fc-metric">Central Depot + 14 Bins</div>
+          <div className="oca-fc-metric">Central Depot + {((costA?.binsCount || 0) + (costB?.binsCount || 0))} Bins</div>
         </div>
 
         <div className="oca-fc-connector">➔</div>
@@ -286,6 +440,8 @@ export default function OperationalCostAnalysis() {
   const [costA, setCostA] = useState(null);
   const [costB, setCostB] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [comparisonPeriod, setComparisonPeriod] = useState('monthly');
   const [activeTab, setActiveTab] = useState('timehorizons'); // default tab: timehorizons
   const reportRef = useRef(null);
 
@@ -294,16 +450,31 @@ export default function OperationalCostAnalysis() {
   useEffect(() => {
     if (!kmlData) return;
     recalculate(kmlData);
-  }, [zoneA.fuelType, zoneB.fuelType, kmlData]);
+  }, [zoneA.fuelType, zoneB.fuelType, kmlData, dbVehicles]);
 
   const loadData = async () => {
     setIsLoading(true);
     try {
       const [kml, vehicles] = await Promise.all([getKMLAdminData(), getVehiclesAdmin()]);
+      const vehicleList = vehicles || [];
       setKmlData(kml);
-      setDbVehicles(vehicles || []);
+      setDbVehicles(vehicleList);
+
+      // Prefer the backend vehicle fuel/energy type when the truck can be matched.
+      // The UI remains editable, but initial calculations now reflect backend data.
+      const loadedTruckA = kml?.trucks?.find(t => t.name === 'TRUCK-001') || kml?.trucks?.[0];
+      const loadedTruckB = kml?.trucks?.find(t => t.name === 'TRUCK-002') || kml?.trucks?.[1];
+      const loadedVehicleA = resolveVehicleForTruck(vehicleList, loadedTruckA);
+      const loadedVehicleB = resolveVehicleForTruck(vehicleList, loadedTruckB);
+      const backendFuelA = getVehicleFuelType(loadedVehicleA);
+      const backendFuelB = getVehicleFuelType(loadedVehicleB);
+      if (backendFuelA && FUEL_RATES[backendFuelA]) setZoneA(prev => ({ ...prev, fuelType: backendFuelA }));
+      if (backendFuelB && FUEL_RATES[backendFuelB]) setZoneB(prev => ({ ...prev, fuelType: backendFuelB }));
+
+      setLoadError(false);
     } catch (err) {
       console.error('Failed to load operational data:', err);
+      setLoadError(true);
     } finally {
       setIsLoading(false);
     }
@@ -318,13 +489,27 @@ export default function OperationalCostAnalysis() {
 
     const distA = computeZoneDistance(depot, binsA);
     const distB = computeZoneDistance(depot, binsB);
+    const truckA = kml.trucks?.find(t => t.name === 'TRUCK-001') || kml.trucks?.[0];
+    const truckB = kml.trucks?.find(t => t.name === 'TRUCK-002') || kml.trucks?.[1];
+    const vehicleA = resolveVehicleForTruck(dbVehicles, truckA);
+    const vehicleB = resolveVehicleForTruck(dbVehicles, truckB);
+    const baselineA = findBaselineRouteDistance(kml.routes, 'ZONE A', 'TRUCK-001', kml.bins);
+    const baselineB = findBaselineRouteDistance(kml.routes, 'ZONE B', 'TRUCK-002', kml.bins);
 
-    setCostA({ ...calcCost(distA, zoneA.fuelType, binsA), zone: 'ZONE A', binsA });
-    setCostB({ ...calcCost(distB, zoneB.fuelType, binsB), zone: 'ZONE B', binsB });
+    setCostA({ ...calcCost(distA, zoneA.fuelType, binsA, vehicleA), comparison: calculateRouteComparison(baselineA, distA, zoneA.fuelType, binsA, vehicleA), zone: 'ZONE A', binsA, vehicleMatched: Boolean(vehicleA) });
+    setCostB({ ...calcCost(distB, zoneB.fuelType, binsB, vehicleB), comparison: calculateRouteComparison(baselineB, distB, zoneB.fuelType, binsB, vehicleB), zone: 'ZONE B', binsB, vehicleMatched: Boolean(vehicleB) });
   };
 
   const truckA = kmlData?.trucks?.find(t => t.name === 'TRUCK-001') || kmlData?.trucks?.[0];
   const truckB = kmlData?.trucks?.find(t => t.name === 'TRUCK-002') || kmlData?.trucks?.[1];
+  const vehicleA = resolveVehicleForTruck(dbVehicles, truckA);
+  const vehicleB = resolveVehicleForTruck(dbVehicles, truckB);
+  const fleetComparison = costA && costB
+    ? calculateFleetComparison(costA, costB)
+    : null;
+  const comparisonMultiplier = comparisonPeriod === 'yearly' ? 12 : 1;
+  const operatingDaysMultiplier = comparisonPeriod === 'yearly' ? 312 : 26;
+  const comparisonLabel = comparisonPeriod === 'yearly' ? 'Projected Annual' : 'Monthly';
 
   const barCompareCost = costA && costB ? [
     { name: 'Fuel Cost',    'ZONE A (₹)': costA.fuelCost,   'ZONE B (₹)': costB.fuelCost },
@@ -351,7 +536,7 @@ export default function OperationalCostAnalysis() {
   ] : [];
 
   const barTimeHorizons = costA && costB ? [
-    { name: '1 Day (Daily)',          'ZONE A (₹)': costA.cost1Day,   'ZONE B (₹)': costB.cost2Weeks ? costB.cost1Day : 0,   'Combined (₹)': costA.cost1Day + costB.cost1Day },
+    { name: '1 Day (Daily)',          'ZONE A (₹)': costA.cost1Day,   'ZONE B (₹)': costB.cost1Day,   'Combined (₹)': costA.cost1Day + costB.cost1Day },
     { name: '2 Weeks (12 Days)',     'ZONE A (₹)': costA.cost2Weeks, 'ZONE B (₹)': costB.cost2Weeks,                       'Combined (₹)': costA.cost2Weeks + costB.cost2Weeks },
     { name: '1 Month (26 Days)',      'ZONE A (₹)': costA.cost1Month, 'ZONE B (₹)': costB.cost1Month,                       'Combined (₹)': costA.cost1Month + costB.cost1Month },
     { name: '6 Months (156 Days)',    'ZONE A (₹)': costA.cost6Months,'ZONE B (₹)': costB.cost6Months,                      'Combined (₹)': costA.cost6Months + costB.cost6Months },
@@ -481,7 +666,7 @@ export default function OperationalCostAnalysis() {
       doc.setFontSize(11);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 41, 59);
-      doc.text('Real Commercial Vehicle Maintenance & Wear Breakdown', 14, y);
+      doc.text('Reference Commercial Vehicle Maintenance & Wear Breakdown', 14, y);
       y += 5;
 
       autoTable(doc, {
@@ -552,14 +737,14 @@ export default function OperationalCostAnalysis() {
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(12);
       doc.setFont('helvetica', 'bold');
-      doc.text('CivicSync - Real-World Municipal Fuel Benchmarks', pageW / 2, 13, { align: 'center' });
+      doc.text('CivicSync - Reference Municipal Fuel Benchmarks', pageW / 2, 13, { align: 'center' });
 
       let y2 = 28;
 
       doc.setFontSize(10);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 41, 59);
-      doc.text('Real-World Fuel & Energy Rates (Maharashtra Local Market 2026)', 14, y2);
+      doc.text('Maharashtra Reference Fuel & Energy Assumptions', 14, y2);
       y2 += 5;
 
       autoTable(doc, {
@@ -583,12 +768,12 @@ export default function OperationalCostAnalysis() {
       doc.setFontSize(8);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(30, 41, 59);
-      doc.text('Real-World Municipal Audit & Parameter Notes:', 18, y2 + 5);
+      doc.text('Operational Model & Parameter Notes:', 18, y2 + 5);
       doc.setFontSize(7);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(71, 85, 105);
       doc.text('1. Distances calculated via Haversine spherical geometry from mapping3.kml coordinates.', 18, y2 + 10);
-      doc.text('2. Driver wage Rs. 850/day (Skilled) + Helper wage Rs. 550/day (Semi-Skilled) as per MH Minimum Wages Act.', 18, y2 + 14);
+      doc.text('2. Driver wage Rs. 850/day (Skilled) + Helper wage Rs. 550/day (Semi-Skilled) used as a reference operating assumption.', 18, y2 + 14);
       doc.text('3. Heavy compactor diesel mileage (4.5 km/L) accounts for urban stop-and-go driving and PTO hydraulic compactor operation.', 18, y2 + 18);
       doc.text('4. Maintenance rate (Rs. 3.75/km + Rs. 135/day) includes tyres, engine oil, hydraulic seals, and brakes.', 18, y2 + 22);
     }
@@ -605,6 +790,15 @@ export default function OperationalCostAnalysis() {
     );
   }
 
+  if (loadError && !kmlData) {
+    return (
+      <div className="oca-loading">
+        <p>Unable to load operational cost data.</p>
+        <button className="oca-btn oca-btn-primary" onClick={loadData}>Try Again</button>
+      </div>
+    );
+  }
+
   const totalDaily = (costA?.totalCost || 0) + (costB?.totalCost || 0);
 
   return (
@@ -616,7 +810,7 @@ export default function OperationalCostAnalysis() {
           <div>
             <h1 className="oca-title">Vehicle Operational Cost Analysis</h1>
             <p className="oca-subtitle">
-              Route-based cost estimation from <strong>mapping3.kml</strong> — Real Municipal Parameters
+              Route-based cost estimation from <strong>mapping3.kml</strong> — Estimated Operational Parameters
             </p>
           </div>
         </div>
@@ -656,6 +850,74 @@ export default function OperationalCostAnalysis() {
           </div>
         ))}
       </div>
+
+      <section className="oca-comparison" aria-labelledby="oca-comparison-title">
+        <div className="oca-comparison-heading">
+          <div>
+            <h2 id="oca-comparison-title">Route Optimization Cost Comparison</h2>
+            <p>Baseline estimated from the static route in mapping3.kml; optimized distance uses the current zone tour.</p>
+          </div>
+          <div className="oca-period-toggle" role="group" aria-label="Comparison period">
+            {['monthly', 'yearly'].map(period => (
+              <button key={period} className={comparisonPeriod === period ? 'active' : ''} onClick={() => setComparisonPeriod(period)}>
+                {period === 'monthly' ? 'Monthly' : 'Yearly'}
+              </button>
+            ))}
+          </div>
+        </div>
+        {fleetComparison ? (
+          <>
+            <div className="oca-comparison-summary">
+              {[
+                ['Estimated Cost Without Optimization', fleetComparison.monthlyBaseline * comparisonMultiplier, '#f59e0b'],
+                ['Optimized Operating Cost', fleetComparison.monthlyOptimized * comparisonMultiplier, '#22c55e'],
+                [fleetComparison.monthlySavings >= 0 ? 'Estimated Savings' : 'Additional Cost', Math.abs(fleetComparison.monthlySavings) * comparisonMultiplier, fleetComparison.monthlySavings >= 0 ? '#4ade80' : '#f87171'],
+                [fleetComparison.monthlySavings >= 0 ? 'Cost Reduction' : 'Cost Increase', Math.abs(fleetComparison.savingsPercentage), fleetComparison.monthlySavings >= 0 ? '#60a5fa' : '#f87171', true],
+              ].map(([label, value, color, isPercentage]) => (
+                <div className="oca-comparison-kpi" key={label}>
+                  <span>{label}</span>
+                  <strong style={{ color }}>{isPercentage ? `${Number(value || 0).toFixed(1)}%` : INR(value)}</strong>
+                </div>
+              ))}
+            </div>
+            <div className="oca-comparison-grid">
+              <div>
+                <h3>{comparisonLabel} Cost Components</h3>
+                <table className="oca-table oca-comparison-table">
+                  <thead><tr><th>Cost Component</th><th>Without Optimization</th><th>With Optimization</th><th>Difference</th></tr></thead>
+                  <tbody>
+                    {fleetComparison.components.map(component => {
+                      const label = { fuelCost: 'Fuel', totalMaint: 'Maintenance', driverWage: 'Driver Wage', helperWage: 'Helper Wage', insurance: 'Insurance', washing: 'Washing' }[component.key];
+                      const baseline = component.baseline * comparisonMultiplier;
+                      const optimized = component.optimized * comparisonMultiplier;
+                      const isSaving = baseline >= optimized;
+                      return <tr key={component.key}><td>{label}</td><td>{INR(baseline)}</td><td>{INR(optimized)}</td><td className={isSaving ? 'oca-td-green' : 'oca-td-red'}>{isSaving ? '-' : '+'}{INR(Math.abs(baseline - optimized))}</td></tr>;
+                    })}
+                    <tr className="oca-comparison-total"><td>Total</td><td>{INR(fleetComparison.monthlyBaseline * comparisonMultiplier)}</td><td>{INR(fleetComparison.monthlyOptimized * comparisonMultiplier)}</td><td className={fleetComparison.monthlySavings >= 0 ? 'oca-td-green' : 'oca-td-red'}>{fleetComparison.monthlySavings >= 0 ? '-' : '+'}{INR(Math.abs(fleetComparison.monthlySavings) * comparisonMultiplier)}</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div className="oca-distance-summary">
+                <h3>Distance and Fuel Saving</h3>
+                <div><span>Distance Without Optimization</span><strong>{(fleetComparison.baselineDistance * operatingDaysMultiplier).toFixed(2)} km</strong></div>
+                <div><span>Optimized Distance</span><strong>{(fleetComparison.optimizedDistance * operatingDaysMultiplier).toFixed(2)} km</strong></div>
+                <div><span>{fleetComparison.distanceSaved >= 0 ? 'Distance Saved' : 'Additional Distance'}</span><strong>{Math.abs(fleetComparison.distanceSaved * operatingDaysMultiplier).toFixed(2)} km</strong></div>
+                <div><span>{fleetComparison.distanceReductionPercentage >= 0 ? 'Distance Reduction' : 'Distance Increase'}</span><strong>{Math.abs(fleetComparison.distanceReductionPercentage).toFixed(1)}%</strong></div>
+                {fleetComparison.energyByType.map(energy => (
+                  <React.Fragment key={energy.fuelType}>
+                    <div><span>{energy.label} Without Optimization</span><strong>{(energy.baseline * operatingDaysMultiplier).toFixed(2)} {energy.unit}</strong></div>
+                    <div><span>{energy.label} With Optimization</span><strong>{(energy.optimized * operatingDaysMultiplier).toFixed(2)} {energy.unit}</strong></div>
+                    <div><span>{energy.label} Saved</span><strong>{Math.max(0, energy.saved * operatingDaysMultiplier).toFixed(2)} {energy.unit}</strong></div>
+                  </React.Fragment>
+                ))}
+                <div><span>Fuel / Energy Cost Saved</span><strong>{INR(Math.max(0, fleetComparison.monthlyFuelCostSavings * comparisonMultiplier))}</strong></div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <p className="oca-comparison-empty">Baseline route data unavailable. Run route optimization or add a static route to mapping3.kml to compare costs.</p>
+        )}
+      </section>
 
       {/* 4 Time-Horizon Summary KPI Cards (1 Day, 2 Weeks, 1 Month, 6 Months) */}
       {costA && costB && (
@@ -707,14 +969,17 @@ export default function OperationalCostAnalysis() {
                   <div className="oca-zone-row">
                     <span>{FUEL_RATES[fuelType].label} Consumed</span><strong>{cost.fuelConsumed} {cost.fuelUnit}</strong>
                   </div>
+                  <div className="oca-zone-row">
+                    <span>Efficiency Source</span><strong>{cost.mileageSource === 'backend' ? `Backend vehicle · ${cost.mileageKmPerL} km/${cost.fuelUnit}` : `Reference estimate · ${cost.mileageKmPerL} km/${cost.fuelUnit}`}</strong>
+                  </div>
                   <div className="oca-zone-row oca-row-fuel">
                     <span>Fuel Cost</span><strong>{INR(cost.fuelCost)}</strong>
                   </div>
                   <div className="oca-zone-row">
-                    <span>Driver Wage (MH Min Wages)</span><strong>{INR(cost.driverWage)}</strong>
+                    <span>Driver Wage (Reference)</span><strong>{INR(cost.driverWage)}</strong>
                   </div>
                   <div className="oca-zone-row">
-                    <span>Helper Wage (MH Min Wages)</span><strong>{INR(cost.helperWage)}</strong>
+                    <span>Helper Wage (Reference)</span><strong>{INR(cost.helperWage)}</strong>
                   </div>
                   <div className="oca-zone-row oca-row-maint">
                     <span>Vehicle Maintenance Breakdown</span><strong>{INR(cost.totalMaint)}</strong>
@@ -826,7 +1091,7 @@ export default function OperationalCostAnalysis() {
         {/* Tab 2: Vehicle Maintenance Breakdown */}
         {activeTab === 'maintenance' && costA && costB && (
           <div className="oca-chart-panel">
-            <h3 className="oca-chart-title">Real Commercial Vehicle Maintenance &amp; Component Wear Breakdown</h3>
+            <h3 className="oca-chart-title">Reference Commercial Vehicle Maintenance &amp; Component Wear Breakdown</h3>
             <ResponsiveContainer width="100%" height={320}>
               <BarChart data={barMaintenance} margin={{ top: 10, right: 24, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
@@ -937,11 +1202,11 @@ export default function OperationalCostAnalysis() {
 
       {/* Assumptions Footer */}
       <div className="oca-assumptions">
-        <h4>📋 Real Municipal Calculation Parameters (Maharashtra Standard Rates)</h4>
+        <h4>📋 Maharashtra Reference Operational Assumptions</h4>
         <ul>
           <li>Route distances computed using <strong>Haversine nearest-neighbour tour</strong> from the central depot through all zone bins and back based on <strong>mapping3.kml</strong>.</li>
           <li>Diesel Heavy Compactor: ₹89.62/litre @ 4.5 km/L (stop-and-go + PTO hydraulic compactor operation).</li>
-          <li>Wages: Driver @ ₹850/day (Skilled) + Helper @ ₹550/day (Semi-Skilled) as per Maharashtra Minimum Wages Act.</li>
+          <li>Wages: Driver @ ₹850/day (Skilled) + Helper @ ₹550/day (Semi-Skilled) used as a reference operating assumption.</li>
           <li>Maintenance: Tyres ₹1.20/km + Engine Oil/Filters ₹0.85/km + Hydraulics ₹1.10/km + Brakes ₹0.60/km + Fixed Servicing ₹135/day.</li>
           <li>Operating days: 2 Weeks = 12 Days (6d/wk) · 1 Month = 26 Days · 6 Months = 156 Days.</li>
         </ul>
