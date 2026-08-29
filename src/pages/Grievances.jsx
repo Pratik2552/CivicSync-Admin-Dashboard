@@ -25,6 +25,22 @@ const CATEGORIES = [
   'Road Blockage',
 ];
 
+const normalizeComplaintStatus = (status) => {
+  const value = String(status || '').trim().toLowerCase();
+
+  if (['resolved', 'solved', 'closed', 'completed', 'cleaned', 'fixed', 'done'].includes(value)) {
+    return 'resolved';
+  }
+
+  if (['assigned', 'in progress', 'in_progress', 'in-progress', 'work in progress', 'work_in_progress', 'processing'].includes(value)) {
+    return 'assigned';
+  }
+
+  return 'open';
+};
+
+const isResolvedComplaint = (status) => normalizeComplaintStatus(status) === 'resolved';
+
 export default function Grievances() {
   const [grievances, setGrievances] = useState([]);
   const [vehicles, setVehicles] = useState([]); // 👈 Stores live vehicles from database with real UUIDs
@@ -76,7 +92,7 @@ export default function Grievances() {
     let critical = 0;
 
     dataList.forEach((ticket) => {
-      const status = (ticket.status || '').toLowerCase();
+      const status = normalizeComplaintStatus(ticket.status);
       const priority = (ticket.priority || '').toLowerCase();
 
       if (status === 'resolved') resolved++;
@@ -107,6 +123,15 @@ export default function Grievances() {
 
       if (categoryFilter !== 'All Categories') {
         dataList = dataList.filter((g) => (g.category || '') === categoryFilter);
+      }
+
+      dataList = dataList.map((ticket) => ({
+        ...ticket,
+        status: normalizeComplaintStatus(ticket.status),
+      }));
+
+      if (statusFilter !== 'all') {
+        dataList = dataList.filter((g) => normalizeComplaintStatus(g.status) === statusFilter);
       }
 
       setGrievances(dataList);
@@ -273,7 +298,7 @@ export default function Grievances() {
               const ticketId = ticket.id || ticket.ticket_id || 'N/A';
               const photo = ticket.photo || ticket.photo_url || 'https://images.unsplash.com/photo-1530587191325-3db32d826c18?w=150&auto=format&fit=crop&q=60';
               const priority = (ticket.priority || 'medium').toLowerCase();
-              const status = (ticket.status || 'open').toLowerCase();
+              const status = normalizeComplaintStatus(ticket.status);
               const submittedDate = ticket.created_at || ticket.submittedAt
                 ? new Date(ticket.created_at || ticket.submittedAt).toLocaleString()
                 : 'N/A';
@@ -294,7 +319,7 @@ export default function Grievances() {
                   <td>
                     <div className="action-buttons" style={{ display: 'flex', gap: '0.25rem' }}>
                       <button className="btn btn-sm" onClick={() => handleView(ticket)}>View</button>
-                      {status !== 'resolved' && (
+                      {!isResolvedComplaint(status) && (
                         <button className="btn btn-sm btn-primary" onClick={() => handleOpenAssign(ticketId)}>Assign</button>
                       )}
                     </div>
@@ -394,7 +419,7 @@ export default function Grievances() {
             </div>
 
             <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-              {(selectedTicket.status || '').toLowerCase() !== 'resolved' && (
+              {!isResolvedComplaint(selectedTicket.status) && (
                 <>
                   <button
                     className="btn btn-primary"

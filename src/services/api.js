@@ -339,4 +339,4 @@ export const assignDriverToKMLZone = async (driverId, driverName, licensePlate, 
     method: 'POST',
     body: JSON.stringify({ driverId, driverName, licensePlate, zoneName }),
   });
-};
+};
