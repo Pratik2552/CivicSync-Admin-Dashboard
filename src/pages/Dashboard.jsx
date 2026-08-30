@@ -151,6 +151,15 @@ const Dashboard = () => {
   const fullFleetCount = vehicles.filter(v => v.status === 'full' || v.currentLoad >= v.maxCapacity * 0.9).length;
   const unackAlertsCount = alerts.filter(a => !a.acknowledged).length;
 
+  const rewardStats = [
+    { label: 'Green Credits redeemed', value: '18,450 GC', tone: '#10b981' },
+    { label: 'Property tax rebates', value: '₹1.8L', tone: '#3b82f6' },
+    { label: 'Water tax rebates', value: '₹42.5K', tone: '#06b6d4' },
+    { label: 'Transport coupons', value: '214', tone: '#f59e0b' },
+    { label: 'Eco Bazaar redemptions', value: '91', tone: '#8b5cf6' },
+    { label: 'Remaining budget', value: '₹1.62L', tone: '#16a34a' },
+  ];
+
   const filteredBins = bins.filter(b => {
     if (activeTab === 'critical') return b.fillLevel > 85;
     if (activeTab === 'warning') return b.fillLevel >= 50 && b.fillLevel <= 85;
@@ -224,6 +233,25 @@ const Dashboard = () => {
           trend="down"
           trendLabel="via OR-Tools OSRM routing"
         />
+      </div>
+
+      <div className="panel" style={{ padding: '1rem 1.25rem', marginBottom: '1.5rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '0.85rem' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1.06rem', color: '#0f172a' }}>Rewards &amp; Rebates</h3>
+            <p style={{ margin: '4px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>Prototype / simulated rewards only. No live tax or utility integration is connected.</p>
+          </div>
+          <span style={{ padding: '6px 10px', borderRadius: 999, background: '#ecfdf5', color: '#166534', fontSize: '0.72rem', fontWeight: 700 }}>Budget protected</span>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '0.75rem' }}>
+          {rewardStats.map((item) => (
+            <div key={item.label} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '0.85rem 0.9rem' }}>
+              <div style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>{item.label}</div>
+              <div style={{ fontSize: '1.15rem', fontWeight: 800, color: item.tone }}>{item.value}</div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Row 2: Secondary Quick Metric Cards */}
