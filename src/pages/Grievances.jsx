@@ -167,7 +167,15 @@ export default function Grievances() {
     if (!selectedDriver || !assignTicketId) return;
 
     try {
-      await assignGrievance(assignTicketId, selectedDriver);
+      // Look up the full ticket object so we can forward its coordinates to
+      // the backend — these become the complaint pin on the driver's map.
+      const ticket = grievances.find(
+        (g) => g.id === assignTicketId || g.ticket_id === assignTicketId
+      );
+      const lat = ticket?.lat ?? null;
+      const lng = ticket?.lng ?? null;
+
+      await assignGrievance(assignTicketId, selectedDriver, lat, lng);
       setIsAssignModalOpen(false);
       await loadGrievances();
 
