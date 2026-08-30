@@ -630,10 +630,11 @@ export default function RouteOptimizer() {
                     );
                   })}
 
-                  {/* KML 3. Pickup Bins / Stops (Green = YES Collected, Red = NO Pending) */}
+                  {/* KML 3. Pickup Bins / Stops (Green = YES Collected, Yellow = Approaching, Red = NO Pending) */}
                   {kmlData?.bins?.map((bin) => {
                     const isCollected = bin.isCollected;
-                    const markerColor = isCollected ? '#16a34a' : '#dc2626';
+                    const isApproaching = bin.isApproaching && !isCollected;
+                    const markerColor = isCollected ? '#16a34a' : isApproaching ? '#f59e0b' : '#dc2626';
 
                     return (
                       <CircleMarker
@@ -653,13 +654,18 @@ export default function RouteOptimizer() {
                             Zone: <strong>{bin.zone}</strong><br />
                             Status: <span style={{ 
                               fontWeight: 700, 
-                              color: isCollected ? '#16a34a' : '#dc2626',
+                              color: isCollected ? '#16a34a' : isApproaching ? '#f59e0b' : '#dc2626',
                               padding: '2px 6px',
                               borderRadius: 4,
-                              background: isCollected ? '#dcfce7' : '#fee2e2'
+                              background: isCollected ? '#dcfce7' : isApproaching ? '#fef3c7' : '#fee2e2'
                             }}>
-                              {isCollected ? '✅ COLLECTED (YES)' : '🔴 PENDING (NO)'}
+                              {isCollected ? '✅ COLLECTED (YES)' : isApproaching ? '🚛 APPROACHING' : '🔴 PENDING (NO)'}
                             </span>
+                            {isApproaching && bin.approachingDriver && (
+                              <div style={{ marginTop: 4, fontSize: '0.75rem', color: '#f59e0b' }}>
+                                Driver: {bin.approachingDriver}
+                              </div>
+                            )}
                             <div style={{ marginTop: 8 }}>
                               <button
                                 onClick={() => handleToggleBin(bin.name, isCollected)}
@@ -920,18 +926,24 @@ export default function RouteOptimizer() {
           <div className="panel" style={{ background: '#fff', borderRadius: 8, padding: '1rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
             <div className="panel-header" style={{ marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0 }}><CheckCircle size={16} style={{ marginRight: 6, color: '#16a34a' }} /> KML Collection Tracker</h3>
-              <span className="badge badge-primary" style={{ fontSize: '0.75rem' }}>
-                {kmlData?.bins?.filter(b => b.isCollected).length || 0} / {kmlData?.bins?.length || 0} Collected
-              </span>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <span className="badge" style={{ fontSize: '0.75rem', background: '#f59e0b', color: '#fff', padding: '2px 8px', borderRadius: 4 }}>
+                  {kmlData?.bins?.filter(b => b.isApproaching && !b.isCollected).length || 0} Approaching
+                </span>
+                <span className="badge badge-primary" style={{ fontSize: '0.75rem' }}>
+                  {kmlData?.bins?.filter(b => b.isCollected).length || 0} / {kmlData?.bins?.length || 0} Collected
+                </span>
+              </div>
             </div>
 
             <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '0.75rem' }}>
-              Bins on the marked path. Toggle <strong>Yes / No</strong> to simulate or monitor live collection. Collected bins turn <strong style={{ color: '#16a34a' }}>GREEN</strong> on map.
+              Bins on the marked path. Toggle <strong>Yes / No</strong> to simulate or monitor live collection. <strong style={{ color: '#f59e0b' }}>YELLOW</strong> = Driver Approaching, <strong style={{ color: '#16a34a' }}>GREEN</strong> = Collected, <strong style={{ color: '#dc2626' }}>RED</strong> = Pending.
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '240px', overflowY: 'auto' }}>
               {kmlData?.bins?.map(bin => {
                 const isCollected = bin.isCollected;
+                const isApproaching = bin.isApproaching && !isCollected;
                 return (
                   <div key={`side-bin-${bin.id}`} style={{
                     display: 'flex',
@@ -940,11 +952,16 @@ export default function RouteOptimizer() {
                     padding: '0.5rem 0.75rem',
                     borderRadius: 6,
                     border: '1px solid #e2e8f0',
-                    background: isCollected ? '#f0fdf4' : '#f8fafc',
+                    background: isCollected ? '#f0fdf4' : isApproaching ? '#fef3c7' : '#f8fafc',
                   }}>
                     <div>
                       <strong style={{ fontSize: '0.85rem' }}>{bin.name}</strong>
                       <span style={{ fontSize: '0.75rem', color: '#64748b', marginLeft: 8 }}>({bin.zone})</span>
+                      {isApproaching && (
+                        <span style={{ fontSize: '0.7rem', color: '#f59e0b', marginLeft: 8, fontWeight: 600 }}>
+                          🚛 Approaching
+                        </span>
+                      )}
                     </div>
 
                     <button
@@ -959,8 +976,8 @@ export default function RouteOptimizer() {
                         borderRadius: 4,
                         border: 'none',
                         cursor: 'pointer',
-                        background: isCollected ? '#16a34a' : '#cbd5e1',
-                        color: isCollected ? '#ffffff' : '#334155',
+                        background: isCollected ? '#16a34a' : isApproaching ? '#f59e0b' : '#cbd5e1',
+                        color: isCollected ? '#ffffff' : isApproaching ? '#ffffff' : '#334155',
                       }}
                     >
                       {isCollected ? <Check size={13} /> : <X size={13} />}

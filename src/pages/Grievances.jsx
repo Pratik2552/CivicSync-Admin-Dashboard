@@ -1,8 +1,18 @@
 import React, { useState, useEffect } from 'react';
+import L from 'leaflet';
+import { MapContainer, Marker, TileLayer } from 'react-leaflet';
 import { getGrievances, assignGrievance, resolveGrievance, getVehiclesAdmin } from '../services/api.js';
 import StatusBadge from '../components/common/StatusBadge.jsx';
 import Modal from '../components/common/Modal.jsx';
+import 'leaflet/dist/leaflet.css';
 import './Grievances.css';
+
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
 
 const CATEGORIES = [
   'All Categories',
@@ -205,6 +215,9 @@ export default function Grievances() {
   const safeGrievancesList = Array.isArray(grievances) ? grievances : [];
   // Filter active vehicles from database using real UUIDs
   const availableDrivers = vehicles.filter((v) => (v.status || '').toLowerCase() !== 'maintenance');
+  const selectedTicketLat = selectedTicket ? Number(selectedTicket.latitude ?? selectedTicket.lat) : null;
+  const selectedTicketLng = selectedTicket ? Number(selectedTicket.longitude ?? selectedTicket.lng) : null;
+  const hasSelectedTicketCoords = Number.isFinite(selectedTicketLat) && Number.isFinite(selectedTicketLng);
 
   return (
     <div className="grievances-page">
@@ -362,6 +375,47 @@ export default function Grievances() {
             <div className="detail-section" style={{ marginBottom: '0.75rem' }}>
               <h4>Description</h4>
               <p>{selectedTicket.description || 'No detailed description provided.'}</p>
+            </div>
+
+            <div className="detail-section" style={{ marginBottom: '0.75rem' }}>
+              <h4>Exact Reported Location</h4>
+              {hasSelectedTicketCoords ? (
+                <div style={{ display: 'grid', gap: '0.75rem' }}>
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '0.75rem 1rem' }}>
+                    <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 4 }}>Coordinates</div>
+                    <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#0f172a' }}>
+                      {selectedTicketLat.toFixed(6)}, {selectedTicketLng.toFixed(6)}
+                    </div>
+                  </div>
+
+                  <div style={{ height: 240, borderRadius: 10, overflow: 'hidden', border: '1px solid #cbd5e1' }}>
+                    <MapContainer
+                      center={[selectedTicketLat, selectedTicketLng]}
+                      zoom={16}
+                      scrollWheelZoom={false}
+                      style={{ height: '100%', width: '100%' }}
+                    >
+                      <TileLayer
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        attribution='&copy; OpenStreetMap contributors'
+                      />
+                      <Marker position={[selectedTicketLat, selectedTicketLng]} />
+                    </MapContainer>
+                  </div>
+
+                  <a
+                    className="btn btn-sm btn-outline"
+                    href={`https://www.google.com/maps?q=${selectedTicketLat},${selectedTicketLng}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 'fit-content' }}
+                  >
+                    Open in Google Maps
+                  </a>
+                </div>
+              ) : (
+                <p style={{ color: '#64748b', margin: 0 }}>No latitude/longitude was saved with this complaint.</p>
+              )}
             </div>
 
             <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
